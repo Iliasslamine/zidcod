@@ -1,0 +1,184 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id            String   @id @default(cuid())
+  role          Role     @default(SELLER)
+  email         String   @unique
+  passwordHash  String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  sellerProfile Seller?
+}
+
+model Seller {
+  id            String               @id @default(cuid())
+  userId        String               @unique
+  fullName      String?
+  storeName     String
+  contact       String
+  city          String?
+  bankName      String?
+  rib           String?
+  sheetToken    String?              @unique
+  status        SellerStatus         @default(PENDING)
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  ledgerEntries LedgerEntry[]
+  orders        Order[]
+  user          User                 @relation(fields: [userId], references: [id])
+  offers        SellerProductOffer[]
+  packs         Pack[]
+}
+
+model Product {
+  id              String               @id @default(cuid())
+  sku             String               @unique
+  name            String
+  adminCosts      Float
+  stockLevel      Int                  @default(0)
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  category        String?              @default("WINNING PRODUCTS")
+  imageUrl        String?
+  images          String[]             @default([])
+  status          String               @default("Published")
+  canvaLink       String?
+  sourceUrl       String?
+  videoUrl        String?
+  description     String?
+  confirmationFee Float?               @default(10.0)
+  deliveryFee     Float?               @default(32.0)
+  packagingFee    Float?               @default(3.0)
+  costPrice       Float?               @default(0.0)
+  productProfit   Float?               @default(0.0)
+  sellingPrice    Float?               @default(0.0)
+  reference       String?
+  isWhiteLabel    Boolean?             @default(false)
+  visibility      String?              @default("public")
+  ownerSellerId   String?
+  orders          Order[]
+  offers          SellerProductOffer[]
+  packItems       PackItem[]
+}
+
+model Pack {
+  id           String     @id @default(cuid())
+  sellerId     String
+  name         String
+  description  String?
+  minimumPrice Float
+  isActive     Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  items        PackItem[]
+  seller       Seller     @relation(fields: [sellerId], references: [id])
+}
+
+model PackItem {
+  id        String   @id @default(cuid())
+  packId    String
+  productId String
+  quantity  Int      @default(1)
+  pack      Pack     @relation(fields: [packId], references: [id], onDelete: Cascade)
+  product   Product  @relation(fields: [productId], references: [id])
+}
+
+model SellerProductOffer {
+  id             String      @id @default(cuid())
+  sellerId       String
+  productId      String
+  minimumPrice   Float
+  approvedStatus OfferStatus @default(PENDING)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  product        Product     @relation(fields: [productId], references: [id])
+  seller         Seller      @relation(fields: [sellerId], references: [id])
+
+  @@unique([sellerId, productId])
+}
+
+model Order {
+  id            String        @id @default(cuid())
+  sellerId      String
+  customerInfo  Json
+  status        OrderStatus   @default(NEW)
+  totalPrice    Float
+  trackingId    String?       @unique
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  productId     String
+  ledgerEntries LedgerEntry[]
+  product       Product       @relation(fields: [productId], references: [id])
+  seller        Seller        @relation(fields: [sellerId], references: [id])
+}
+
+model LedgerEntry {
+  id        String            @id @default(cuid())
+  sellerId  String
+  orderId   String?
+  type      LedgerEntryType
+  amount    Float
+  status    LedgerEntryStatus @default(PENDING)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+  order     Order?            @relation(fields: [orderId], references: [id])
+  seller    Seller            @relation(fields: [sellerId], references: [id])
+}
+
+enum Role {
+  ADMIN
+  CALL_CENTER
+  WAREHOUSE
+  SELLER
+}
+
+enum SellerStatus {
+  ACTIVE
+  PENDING
+  SUSPENDED
+}
+
+enum OfferStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum OrderStatus {
+  NEW
+  PENDING_CONFIRMATION
+  CONFIRMED
+  PREPARING
+  READY_TO_SHIP
+  SHIPPED
+  IN_TRANSIT
+  DELIVERED
+  DELIVERY_FAILED
+  RETURNED
+}
+
+enum LedgerEntryType {
+  CONFIRMATION_FEE
+  DELIVERY_FEE
+  PACKAGING_FEE
+  SERVICE_FEE
+  ADMIN_MARGIN
+  SELLER_COMMISSION
+  PAYOUT
+}
+
+enum LedgerEntryStatus {
+  PENDING
+  AVAILABLE
+  PAID
+  CANCELLED
+  PENDING_PAYOUT
+}

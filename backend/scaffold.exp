@@ -1,0 +1,12 @@
+#!/usr/bin/expect -f
+set timeout -1
+set resources {"users" "auth" "orders" "ledger" "products"}
+
+foreach res $resources {
+    spawn npx nest g resource $res
+    expect "What transport layer do you use?"
+    send "\r"
+    expect "Would you like to generate CRUD entry points?"
+    send "\r"
+    expect eof
+}

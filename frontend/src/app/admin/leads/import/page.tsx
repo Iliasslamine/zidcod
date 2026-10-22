@@ -1,0 +1,1 @@
+export default function Page() { return <div className="p-8"><h1 className="text-2xl font-bold">Page Under Construction</h1><p className="text-slate-500">This page is being rebuilt to match zidcod.com.</p></div>; }

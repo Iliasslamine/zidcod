@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+*/node_modules/
+package-lock.json.bak
+
+# Production builds
+dist/
+backend/dist/
+build/
+.next/
+frontend/.next/
+out/
+frontend/out/
+
+# Environment variables & secrets (CRITICAL: Never commit secrets)
+.env
+.env*
+!.env.example
+*.env
+*.env.local
+*.env.production
+
+# Large media & screen recordings
+*.mov
+*.mp4
+*.m4v
+/*.png
+
+# Operating System & IDE
+.DS_Store
+*/.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs & temp files
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+scratch/
+extracted-apps-script.js
+zonecod-integrations-chunk.js
