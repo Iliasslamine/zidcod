@@ -1,6 +1,8 @@
 'use client';
 
+import Link from 'next/link';
 import { Bell, ChevronDown, Calendar, Search } from 'lucide-react';
+
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
@@ -17,7 +19,26 @@ export function TopHeader() {
     : (session?.user as any)?.role === 'SELLER';
     
   const role = isSeller ? 'Seller' : 'Super Admin';
-  const name = isSeller ? 'Seller' : 'Yassine Dradar';
+  const email = (session?.user?.email || '').toLowerCase().trim();
+
+  let name = 'Iliass Lamine';
+  let initials = 'IL';
+
+  if (email.includes('yassine')) {
+    name = 'Yassine Dradar';
+    initials = 'YD';
+  } else if (email.includes('ilyass') || email.includes('iliass')) {
+    name = isSeller ? 'ILIASS LAMINE' : 'Iliass Lamine';
+    initials = 'IL';
+  } else if (isSeller) {
+    name = 'ILIASS LAMINE';
+    initials = 'IL';
+  } else {
+    name = 'Iliass Lamine';
+    initials = 'IL';
+  }
+
+  const profileUrl = isSeller ? '/seller/profile' : '/admin/settings';
   
   const getPageTitle = () => {
     if (pathname.includes('/marketplace')) return 'Marketplace';
@@ -66,7 +87,7 @@ export function TopHeader() {
           <DropdownMenuTrigger className="outline-none flex items-center gap-3 cursor-pointer group ml-2">
             <Avatar className="h-10 w-10 border-0 transition-all">
               <AvatarFallback className="bg-[#7c3aed] text-white font-bold text-sm">
-                {name.substring(0, 2).toUpperCase()}
+                {initials}
               </AvatarFallback>
             </Avatar>
             <div className="flex flex-col text-left">
@@ -76,8 +97,16 @@ export function TopHeader() {
             <ChevronDown className="h-4 w-4 text-slate-400 group-hover:text-slate-600 transition-colors ml-1" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48 shadow-lg border-slate-100 rounded-xl mt-2">
-            <DropdownMenuItem className="font-medium text-slate-700 cursor-pointer focus:bg-slate-50">Profile</DropdownMenuItem>
-            <DropdownMenuItem className="font-medium text-slate-700 cursor-pointer focus:bg-slate-50">Settings</DropdownMenuItem>
+            <DropdownMenuItem className="font-medium text-slate-700 cursor-pointer focus:bg-slate-50 p-0">
+              <Link href={profileUrl} className="w-full h-full px-2 py-1.5 flex items-center">
+                Profile
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem className="font-medium text-slate-700 cursor-pointer focus:bg-slate-50 p-0">
+              <Link href={profileUrl} className="w-full h-full px-2 py-1.5 flex items-center">
+                Settings
+              </Link>
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => signOut({ callbackUrl: '/login' })} className="font-bold text-red-600 cursor-pointer focus:bg-red-50 focus:text-red-700">Sign Out</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
