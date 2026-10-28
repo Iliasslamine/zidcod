@@ -18,6 +18,7 @@ function CreateLeadContent() {
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
+    city: 'Casablanca',
     address: '',
     productId: preselectedProductId || '',
     quantity: 1,
@@ -57,8 +58,11 @@ function CreateLeadContent() {
         customerInfo: {
           name: formData.name,
           phone: formData.phone,
+          city: formData.city,
           address: formData.address,
-          notes: formData.notes
+          notes: formData.notes,
+          source: 'MANUAL',
+          quantity: formData.quantity
         }
       };
 
@@ -89,7 +93,7 @@ function CreateLeadContent() {
                 <User className="w-5 h-5 text-indigo-600" /> Customer Information
               </h2>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                 <div className="space-y-2">
                   <label className="text-[13px] font-semibold text-slate-700">Full Name *</label>
                   <Input required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="John Doe" className="h-11 rounded-xl border-slate-200 shadow-sm focus-visible:ring-indigo-500 font-medium" />
@@ -102,6 +106,18 @@ function CreateLeadContent() {
                     </div>
                     <Input required type="tel" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} placeholder="+212 600 000 000" className="pl-10 h-11 rounded-xl border-slate-200 shadow-sm focus-visible:ring-indigo-500 font-medium" />
                   </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[13px] font-semibold text-slate-700">City *</label>
+                  <select
+                    value={formData.city}
+                    onChange={e => setFormData({...formData, city: e.target.value})}
+                    className="flex h-11 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 shadow-sm"
+                  >
+                    {['Casablanca', 'Rabat', 'Marrakech', 'Tangier', 'Fes', 'Agadir', 'Meknès', 'Oujda', 'Kenitra', 'Tetouan', 'Safi', 'Mohammedia', 'El Jadida', 'Other'].map(c => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
