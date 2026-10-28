@@ -23,78 +23,41 @@ interface SelectedProduct extends ProductItem {
   quantity: number;
 }
 
-const defaultApprovedProducts: ProductItem[] = [
-  {
-    id: 'prod-vantor',
-    name: '💪 زيت VANTOR للرجال',
-    sku: 'VAN-1',
-    adminCosts: 35,
-    imageUrl: 'https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=100&h=100&fit=crop&q=80'
-  },
-  {
-    id: 'prod-bloomy',
-    name: '🥑 خضرة وطاقة في كوب واحد - BLOOMY',
-    sku: 'BLM-1',
-    adminCosts: 45,
-    imageUrl: 'https://images.unsplash.com/photo-1546868871-7041f2a55e12?w=100&h=100&fit=crop&q=80'
-  },
-  {
-    id: 'prod-mammoth',
-    name: '🦣 ROYAL MAMMOTH - جل أفروزي طبيعي',
-    sku: 'MAM-1',
-    adminCosts: 55,
-    imageUrl: 'https://images.unsplash.com/photo-1526947425960-945c6e72858f?w=100&h=100&fit=crop&q=80'
-  },
-  {
-    id: 'prod-luneo',
-    name: '👶 LUNEO كيدز ضد القمل والصيبان',
-    sku: 'LUNE-1',
-    adminCosts: 40,
-    imageUrl: 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=100&h=100&fit=crop&q=80'
-  },
-  {
-    id: 'prod-blush',
-    name: 'Blush – سيروم لتوريد الخدود والشفاه – 30مل',
-    sku: 'BLS-30',
-    adminCosts: 20,
-    imageUrl: 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?w=100&h=100&fit=crop&q=80'
-  },
-  {
-    id: 'prod-spray',
-    name: 'Spray Anti Chute Cheveux – بخاخ مضاد لتساقط الشعر – 100مل',
-    sku: 'SACC-100',
-    adminCosts: 30,
-    imageUrl: 'https://images.unsplash.com/photo-1535585209827-a15fcdbc4c2d?w=100&h=100&fit=crop&q=80'
-  }
-];
-
 export default function PacksPage() {
   const [packName, setPackName] = useState('');
   const [description, setDescription] = useState('');
   const [isActive, setIsActive] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [availableProducts, setAvailableProducts] = useState<ProductItem[]>(defaultApprovedProducts);
+  const [availableProducts, setAvailableProducts] = useState<ProductItem[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(true);
   const [selectedProducts, setSelectedProducts] = useState<SelectedProduct[]>([]);
   const [existingPacks, setExistingPacks] = useState<any[]>([]);
   const [showForm, setShowForm] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    // Fetch live products from backend to merge with defaults
-    api.get('/products')
+    // Fetch ONLY approved products for this seller
+    setLoadingProducts(true);
+    api.get('/products/my')
       .then(res => {
-        if (Array.isArray(res.data) && res.data.length > 0) {
-          const mapped = res.data.map((p: any) => ({
+        if (Array.isArray(res.data)) {
+          const approved = res.data.filter((p: any) => p.offerStatus === 'APPROVED' || p.approvedStatus === 'APPROVED');
+          const mapped = approved.map((p: any) => ({
             id: p.id,
             name: p.name,
             sku: p.sku,
-            adminCosts: p.adminCosts || 35,
-            imageUrl: p.imageUrl || p.image || defaultApprovedProducts[0].imageUrl
+            adminCosts: p.sellerMinimumPrice || p.adminCosts || p.sellingPrice || 35,
+            imageUrl: p.imageUrl || p.image || 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=100&h=100&fit=crop&q=80'
           }));
           setAvailableProducts(mapped);
         }
       })
-      .catch(() => {});
+      .catch((err) => {
+        console.error('Failed to load approved products:', err);
+      })
+      .finally(() => {
+        setLoadingProducts(false);
+      });
 
     // Fetch existing packs from backend
     api.get('/packs')
@@ -352,40 +315,55 @@ export default function PacksPage() {
           </div>
 
           {/* Approved Products List */}
-          <div className="divide-y divide-slate-100 max-h-[340px] overflow-y-auto pr-1">
-            {filteredProducts.map((product) => {
-              const isSelected = selectedProducts.some(p => p.id === product.id);
-              return (
-                <div 
-                  key={product.id}
-                  className="py-3 flex items-center justify-between gap-3 group hover:bg-slate-50/50 rounded-xl px-2 transition-colors"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-10 h-10 rounded-xl bg-slate-100 border border-slate-200 overflow-hidden shrink-0">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={product.imageUrl} alt="" className="w-full h-full object-cover" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-[13px] font-bold text-slate-900 truncate leading-snug">
-                        {product.name}
-                      </p>
-                      <p className="text-[11px] text-slate-400 font-medium">
-                        Min. Price: {product.adminCosts} DH
-                      </p>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => handleAddProduct(product)}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center text-[#6d28d9] hover:bg-purple-100 hover:text-[#5b21b6] transition-colors shrink-0"
-                    title="Add to pack"
+          {loadingProducts ? (
+            <div className="py-8 text-center text-xs text-slate-400">Loading your approved products...</div>
+          ) : filteredProducts.length === 0 ? (
+            <div className="py-8 text-center bg-slate-50/60 rounded-2xl border border-dashed border-slate-200 p-4">
+              <Package className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+              <p className="text-xs font-bold text-slate-700">No approved products found</p>
+              <p className="text-[11px] text-slate-400 mt-1 max-w-[240px] mx-auto">
+                Packs can only be created with products you have requested access to and that are approved.
+              </p>
+              <a href="/seller/marketplace" className="inline-block mt-3 text-xs font-bold text-[#6d28d9] hover:underline">
+                Request products in Marketplace &rarr;
+              </a>
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100 max-h-[340px] overflow-y-auto pr-1">
+              {filteredProducts.map((product) => {
+                const isSelected = selectedProducts.some(p => p.id === product.id);
+                return (
+                  <div 
+                    key={product.id}
+                    className="py-3 flex items-center justify-between gap-3 group hover:bg-slate-50/50 rounded-xl px-2 transition-colors"
                   >
-                    <Plus className="w-5 h-5 stroke-[2.5]" />
-                  </button>
-                </div>
-              );
-            })}
-          </div>
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-slate-100 border border-slate-200 overflow-hidden shrink-0">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={product.imageUrl} alt="" className="w-full h-full object-cover" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[13px] font-bold text-slate-900 truncate leading-snug">
+                          {product.name}
+                        </p>
+                        <p className="text-[11px] text-slate-400 font-medium">
+                          Min. Price: {product.adminCosts} DH
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => handleAddProduct(product)}
+                      className="w-8 h-8 rounded-lg flex items-center justify-center text-[#6d28d9] hover:bg-purple-100 hover:text-[#5b21b6] transition-colors shrink-0"
+                      title="Add to pack"
+                    >
+                      <Plus className="w-5 h-5 stroke-[2.5]" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </Card>
       </div>
 

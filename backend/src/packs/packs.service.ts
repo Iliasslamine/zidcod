@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CreatePackDto } from './dto/create-pack.dto.js';
 
@@ -16,6 +16,19 @@ export class PacksService {
       if (!seller) {
         throw new NotFoundException('No seller found to associate this pack with');
       }
+    }
+
+    const productIds = dto.items.map((it) => it.productId);
+    const approvedOffers = await this.prisma.sellerProductOffer.findMany({
+      where: {
+        sellerId: seller.id,
+        productId: { in: productIds },
+        approvedStatus: 'APPROVED',
+      },
+    });
+
+    if (approvedOffers.length < productIds.length) {
+      throw new BadRequestException('Packs can only be created using products approved for your seller account.');
     }
 
     return this.prisma.pack.create({
