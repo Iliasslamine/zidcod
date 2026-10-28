@@ -17,7 +17,8 @@ import {
   CheckCircle2, 
   Truck, 
   XCircle,
-  Clock
+  Clock,
+  Trash2
 } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import { toast } from 'sonner';
@@ -31,6 +32,38 @@ export default function OrdersPage() {
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const { data: session } = useSession();
+
+  const handleDeleteOrder = async (orderId: string) => {
+    if (!window.confirm('Are you sure you want to delete this lead?')) return;
+    try {
+      const token = (session as any)?.accessToken;
+      await axios.delete(`http://localhost:4000/orders/${orderId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      toast.success('Lead deleted successfully');
+      setOrders(prev => prev.filter(o => o.id !== orderId));
+      if (selectedOrder?.id === orderId) {
+        setSelectedOrder(null);
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed to delete lead');
+    }
+  };
+
+  const handleDeleteAllOrders = async () => {
+    if (!window.confirm(`Are you sure you want to delete all ${orders.length} leads? This cannot be undone.`)) return;
+    try {
+      const token = (session as any)?.accessToken;
+      await axios.delete(`http://localhost:4000/orders`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      toast.success('All leads deleted successfully');
+      setOrders([]);
+      setSelectedOrder(null);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed to delete all leads');
+    }
+  };
 
   const fetchOrders = async () => {
     try {
@@ -197,6 +230,16 @@ export default function OrdersPage() {
           <p className="text-slate-400 mt-1 text-[15px]">All orders by status: confirm leads, dispatch for livraison, track delivery.</p>
         </div>
         <div className="flex items-center gap-3">
+          {orders.length > 0 && (
+            <Button 
+              onClick={handleDeleteAllOrders}
+              variant="outline" 
+              className="border-red-200 text-red-600 bg-red-50/50 hover:bg-red-50 hover:text-red-700 font-semibold shadow-sm h-10 px-4 rounded-xl flex items-center gap-2"
+            >
+              <Trash2 className="w-4 h-4 text-red-500" />
+              Delete All ({orders.length})
+            </Button>
+          )}
           <Button 
             onClick={handleExportCSV}
             variant="outline" 
@@ -296,9 +339,9 @@ export default function OrdersPage() {
               <tbody>
                 {filteredOrders.map((order: any) => {
                   const customer = order.customerInfo || {};
-                  const customerName = customer.name || order.customerName || 'Unknown Customer';
-                  const customerPhone = customer.phone || order.customerPhone || '—';
-                  const customerCity = customer.city ? `(${customer.city})` : '';
+                  const customerName = order.customerInfo?.name || order.customerName || 'Customer';
+                  const customerPhone = order.customerInfo?.phone || order.customerPhone || '—';
+                  const customerCity = order.customerInfo?.city;
                   const price = order.totalPrice ?? order.price ?? 0;
 
                   return (
@@ -317,11 +360,14 @@ export default function OrdersPage() {
                         </div>
                         <div className="text-[12px] font-semibold text-slate-900 mt-0.5">
                           {price} DH
+                          {customer.quantity && customer.quantity > 1 && (
+                            <span className="text-slate-400 font-normal ml-1.5">× {customer.quantity}</span>
+                          )}
                         </div>
                       </td>
                       <td className="px-6 py-4">
                         <div className="font-medium text-slate-800 text-[14px]">
-                          {customerName} <span className="text-slate-400 text-xs font-normal">{customerCity}</span>
+                          {customerName} {customerCity && <span className="text-slate-400 text-xs font-normal">({customerCity})</span>}
                         </div>
                         <div className="text-[12px] text-slate-400 font-mono mt-0.5">
                           {customerPhone}
@@ -348,13 +394,23 @@ export default function OrdersPage() {
                         {new Date(order.createdAt).toLocaleDateString()}
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <Button 
-                          onClick={() => setSelectedOrder(order)}
-                          variant="ghost" 
-                          className="h-8 text-[13px] font-medium text-[#7c3aed] hover:bg-purple-50"
-                        >
-                          View Details
-                        </Button>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button 
+                            onClick={() => setSelectedOrder(order)}
+                            variant="ghost" 
+                            className="h-8 text-[13px] font-medium text-[#7c3aed] hover:bg-purple-50"
+                          >
+                            View Details
+                          </Button>
+                          <Button 
+                            onClick={(e) => { e.stopPropagation(); handleDeleteOrder(order.id); }}
+                            variant="ghost" 
+                            title="Delete Lead"
+                            className="h-8 w-8 p-0 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -417,6 +473,9 @@ export default function OrdersPage() {
                     <div className="text-base font-black text-slate-900">
                       {selectedOrder.totalPrice ?? selectedOrder.price ?? 0} DH
                     </div>
+                    <span className="text-xs text-slate-400 font-medium">
+                      Qty: {selectedOrder.customerInfo?.quantity || selectedOrder.customerInfo?.qty || 1}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -450,6 +509,13 @@ export default function OrdersPage() {
                   <div className="pt-2 border-t border-slate-200/60 text-xs">
                     <span className="text-slate-400 font-medium">Delivery Address:</span>
                     <p className="text-slate-800 font-medium mt-0.5">{selectedOrder.customerInfo.address}</p>
+                  </div>
+                )}
+
+                {selectedOrder.customerInfo?.notes && (
+                  <div className="pt-2 border-t border-slate-200/60 text-xs">
+                    <span className="text-slate-400 font-medium">Customer / Internal Notes:</span>
+                    <p className="text-slate-800 italic mt-0.5">{selectedOrder.customerInfo.notes}</p>
                   </div>
                 )}
               </div>
@@ -496,29 +562,37 @@ export default function OrdersPage() {
                 </div>
               </div>
 
-              {/* WhatsApp button */}
-              {selectedOrder.customerInfo?.phone && (
-                <div className="pt-1 flex gap-3">
+              {/* Actions footer */}
+              <div className="pt-2 flex flex-wrap gap-3">
+                {selectedOrder.customerInfo?.phone && (
                   <a 
                     href={`https://wa.me/${selectedOrder.customerInfo.phone.replace(/\D/g, '')}?text=Bonjour%20${encodeURIComponent(selectedOrder.customerInfo?.name || '')},%20concernant%20votre%20commande`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex-1"
+                    className="flex-1 min-w-[200px]"
                   >
                     <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl h-11 flex items-center justify-center gap-2 shadow-sm">
                       <MessageCircle className="w-4 h-4" />
                       Call / WhatsApp Customer
                     </Button>
                   </a>
-                  <Button 
-                    variant="outline" 
-                    onClick={() => setSelectedOrder(null)}
-                    className="border-slate-200 rounded-xl h-11 px-5"
-                  >
-                    Close
-                  </Button>
-                </div>
-              )}
+                )}
+                <Button 
+                  variant="outline" 
+                  onClick={() => handleDeleteOrder(selectedOrder.id)}
+                  className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 rounded-xl h-11 px-4 flex items-center gap-1.5"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Delete Lead
+                </Button>
+                <Button 
+                  variant="outline" 
+                  onClick={() => setSelectedOrder(null)}
+                  className="border-slate-200 rounded-xl h-11 px-5"
+                >
+                  Close
+                </Button>
+              </div>
             </div>
           </div>
         </div>

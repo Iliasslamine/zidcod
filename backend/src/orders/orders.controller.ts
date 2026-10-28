@@ -1,6 +1,7 @@
-import { Controller, Get, Post, Body, Patch, Param, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Delete, Param, UseGuards, Request } from '@nestjs/common';
 import { OrdersService } from './orders.service.js';
 import { CreateOrderDto } from './dto/create-order.dto.js';
+import { BulkCreateOrderDto } from './dto/bulk-create-order.dto.js';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto.js';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 
@@ -12,6 +13,11 @@ export class OrdersController {
   @Post()
   createLead(@Body() dto: CreateOrderDto, @Request() req: any) {
     return this.ordersService.createLead(req.user.sub, dto);
+  }
+
+  @Post('bulk')
+  createBulkLeads(@Body() dto: BulkCreateOrderDto, @Request() req: any) {
+    return this.ordersService.createBulkLeads(req.user.sub, dto.leads);
   }
 
   @Patch(':id/status')
@@ -32,5 +38,15 @@ export class OrdersController {
   @Get('seller')
   findAllSeller(@Request() req: any) {
     return this.ordersService.findAllSeller(req.user.sub);
+  }
+
+  @Delete(':id')
+  deleteOrder(@Param('id') id: string, @Request() req: any) {
+    return this.ordersService.deleteOrder(req.user.sub, req.user.role, id);
+  }
+
+  @Delete()
+  deleteAllOrders(@Request() req: any) {
+    return this.ordersService.deleteAllOrders(req.user.sub, req.user.role);
   }
 }

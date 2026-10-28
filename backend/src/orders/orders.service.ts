@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { LedgerService } from '../ledger/ledger.service.js';
 import { CreateOrderDto } from './dto/create-order.dto.js';
@@ -41,6 +41,112 @@ export class OrdersService {
         status: OrderStatus.NEW,
       }
     });
+  }
+
+  async createBulkLeads(userId: string, leads: any[]) {
+    const seller = await this.prisma.seller.findUnique({ where: { userId } });
+    if (!seller) throw new NotFoundException('Seller profile not found');
+
+    if (!Array.isArray(leads) || leads.length === 0) {
+      throw new BadRequestException('No leads provided');
+    }
+
+    const products = await this.prisma.product.findMany();
+    const productSkuMap = new Map<string, any>();
+    const productNameMap = new Map<string, any>();
+    for (const p of products) {
+      if (p.sku) productSkuMap.set(p.sku.toLowerCase().trim(), p);
+      if (p.name) productNameMap.set(p.name.toLowerCase().trim(), p);
+    }
+
+    const createdOrders: any[] = [];
+    const errors: any[] = [];
+
+    for (let i = 0; i < leads.length; i++) {
+      const row = leads[i];
+      const rawSku = String(row.sku || row.productSku || row['Product SKU'] || '').trim();
+      const customer = String(row.customerName || row.customer || row.name || row['Customer Name'] || '').trim();
+      const phone = String(row.phone || row.phoneNumber || row['Phone Number'] || '').trim();
+      const city = String(row.city || row['City'] || 'Casablanca').trim();
+      const address = String(row.address || row.fullAddress || row['Full Address'] || '').trim();
+      const price = parseFloat(row.price || row['Price']) || 0;
+      const quantity = parseInt(row.quantity || row['Quantity'], 10) || 1;
+      const notes = String(row.notes || row.note || row['Notes'] || '').trim();
+
+      if (!customer || !phone) {
+        errors.push({ row: i + 1, error: 'Customer name or phone is missing' });
+        continue;
+      }
+
+      // Match product by SKU or name
+      let product = productSkuMap.get(rawSku.toLowerCase()) || productNameMap.get(rawSku.toLowerCase());
+      if (!product && rawSku) {
+        product = products.find(p => 
+          (p.sku && p.sku.toLowerCase() === rawSku.toLowerCase()) ||
+          (p.sku && p.sku.toLowerCase().includes(rawSku.toLowerCase())) || 
+          (p.name && p.name.toLowerCase().includes(rawSku.toLowerCase()))
+        );
+      }
+
+      if (!product) {
+        if (products.length > 0) {
+          product = products[0];
+        } else {
+          errors.push({ row: i + 1, error: `Product SKU '${rawSku}' not found in catalog` });
+          continue;
+        }
+      }
+
+      // Ensure seller has an offer for this product so it displays properly everywhere
+      const existingOffer = await this.prisma.sellerProductOffer.findUnique({
+        where: {
+          sellerId_productId: {
+            sellerId: seller.id,
+            productId: product.id,
+          }
+        }
+      });
+      if (!existingOffer) {
+        await this.prisma.sellerProductOffer.create({
+          data: {
+            sellerId: seller.id,
+            productId: product.id,
+            minimumPrice: product.sellingPrice || 50,
+            approvedStatus: 'APPROVED',
+          }
+        });
+      }
+
+      const unitPrice = price > 0 ? price : (product.sellingPrice || 100);
+      const totalPrice = unitPrice * quantity;
+
+      const order = await this.prisma.order.create({
+        data: {
+          sellerId: seller.id,
+          productId: product.id,
+          totalPrice,
+          customerInfo: {
+            name: customer,
+            phone,
+            city: city || 'Casablanca',
+            address: address || '',
+            notes: notes || '',
+            quantity,
+            sku: product.sku || rawSku,
+            source: 'CSV_IMPORT'
+          },
+          status: OrderStatus.NEW,
+        }
+      });
+      createdOrders.push(order);
+    }
+
+    return {
+      success: true,
+      count: createdOrders.length,
+      errorsCount: errors.length,
+      errors
+    };
   }
 
   async updateStatus(id: string, newStatus: OrderStatus) {
@@ -155,5 +261,36 @@ export class OrdersService {
       include: { product: true },
       orderBy: { createdAt: 'desc' }
     });
+  }
+
+  async deleteOrder(userId: string, role: string, orderId: string) {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: { seller: true },
+    });
+    if (!order) throw new NotFoundException('Order not found');
+
+    if (role !== 'ADMIN' && order.seller.userId !== userId) {
+      throw new ForbiddenException('You cannot delete this order');
+    }
+
+    await this.prisma.ledgerEntry.deleteMany({ where: { orderId } });
+    await this.prisma.order.delete({ where: { id: orderId } });
+
+    return { success: true, message: 'Order deleted successfully' };
+  }
+
+  async deleteAllOrders(userId: string, role: string) {
+    if (role === 'ADMIN') {
+      await this.prisma.ledgerEntry.deleteMany({ where: { orderId: { not: null } } });
+      const res = await this.prisma.order.deleteMany({});
+      return { success: true, count: res.count };
+    } else {
+      const seller = await this.prisma.seller.findUnique({ where: { userId } });
+      if (!seller) throw new NotFoundException('Seller profile not found');
+      await this.prisma.ledgerEntry.deleteMany({ where: { sellerId: seller.id, orderId: { not: null } } });
+      const res = await this.prisma.order.deleteMany({ where: { sellerId: seller.id } });
+      return { success: true, count: res.count };
+    }
   }
 }

@@ -17,9 +17,11 @@ import {
   Tag, 
   ShoppingBag,
   MessageCircle,
-  X
+  X,
+  Trash2
 } from 'lucide-react';
 import { useSession } from 'next-auth/react';
+import { toast } from 'sonner';
 
 export default function SellerOrdersPage() {
   const [activeTab, setActiveTab] = useState('New');
@@ -29,6 +31,38 @@ export default function SellerOrdersPage() {
   const [selectedCity, setSelectedCity] = useState('All');
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
   const { data: session } = useSession();
+
+  const handleDeleteOrder = async (orderId: string) => {
+    if (!window.confirm('Are you sure you want to delete this lead?')) return;
+    try {
+      const token = (session as any)?.accessToken;
+      await axios.delete(`http://localhost:4000/orders/${orderId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      toast.success('Lead deleted successfully');
+      setOrders(prev => prev.filter(o => o.id !== orderId));
+      if (selectedOrder?.id === orderId) {
+        setSelectedOrder(null);
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed to delete lead');
+    }
+  };
+
+  const handleDeleteAllOrders = async () => {
+    if (!window.confirm(`Are you sure you want to delete all ${orders.length} leads? This cannot be undone.`)) return;
+    try {
+      const token = (session as any)?.accessToken;
+      await axios.delete(`http://localhost:4000/orders`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      toast.success('All leads deleted successfully');
+      setOrders([]);
+      setSelectedOrder(null);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed to delete all leads');
+    }
+  };
 
   useEffect(() => {
     const fetchOrders = async () => {
@@ -175,10 +209,20 @@ export default function SellerOrdersPage() {
           <p className="text-slate-400 mt-1 text-[15px]">Your leads by status: pending confirmation, in delivery, delivered and returned.</p>
         </div>
         <div className="flex items-center gap-3">
+          {orders.length > 0 && (
+            <Button 
+              onClick={handleDeleteAllOrders}
+              variant="outline" 
+              className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 font-semibold shadow-sm h-10 px-3.5 rounded-xl flex items-center gap-1.5 text-xs sm:text-sm"
+            >
+              <Trash2 className="w-4 h-4 text-red-500" />
+              Delete All ({orders.length})
+            </Button>
+          )}
           <Button 
             onClick={handleExportCSV}
             variant="outline" 
-            className="border-slate-200 text-slate-700 bg-white hover:bg-slate-50 font-semibold shadow-sm h-10 px-4 rounded-xl flex items-center gap-2"
+            className="border-slate-200 text-slate-700 bg-white hover:bg-slate-50 font-semibold shadow-sm h-10 px-4 rounded-xl flex items-center gap-2 text-xs sm:text-sm"
           >
             <Download className="w-4 h-4 text-slate-500" />
             Export ({filteredOrders.length})
@@ -274,9 +318,9 @@ export default function SellerOrdersPage() {
               <tbody>
                 {filteredOrders.map((order: any) => {
                   const customer = order.customerInfo || {};
-                  const customerName = customer.name || order.customerName || 'Unknown Customer';
-                  const customerPhone = customer.phone || order.customerPhone || '—';
-                  const customerCity = customer.city ? `(${customer.city})` : '';
+                  const customerName = order.customerInfo?.name || order.customerName || 'Customer';
+                  const customerPhone = order.customerInfo?.phone || order.customerPhone || '—';
+                  const customerCity = order.customerInfo?.city;
                   const price = order.totalPrice ?? order.price ?? 0;
 
                   return (
@@ -302,7 +346,7 @@ export default function SellerOrdersPage() {
                       </td>
                       <td className="px-6 py-4">
                         <div className="font-medium text-slate-800 text-[14px]">
-                          {customerName} <span className="text-slate-400 text-xs font-normal">{customerCity}</span>
+                          {customerName} {customerCity && <span className="text-slate-400 text-xs font-normal">({customerCity})</span>}
                         </div>
                         <div className="text-[12px] text-slate-400 font-mono mt-0.5">
                           {customerPhone}
@@ -324,13 +368,23 @@ export default function SellerOrdersPage() {
                         {new Date(order.createdAt).toLocaleDateString()}
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <Button 
-                          onClick={() => setSelectedOrder(order)}
-                          variant="ghost" 
-                          className="h-8 text-[13px] font-medium text-[#7c3aed] hover:bg-purple-50"
-                        >
-                          View Details
-                        </Button>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button 
+                            onClick={() => setSelectedOrder(order)}
+                            variant="ghost" 
+                            className="h-8 text-[13px] font-medium text-[#7c3aed] hover:bg-purple-50"
+                          >
+                            View Details
+                          </Button>
+                          <Button 
+                            onClick={(e) => { e.stopPropagation(); handleDeleteOrder(order.id); }}
+                            variant="ghost" 
+                            title="Delete Lead"
+                            className="h-8 w-8 p-0 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -440,29 +494,37 @@ export default function SellerOrdersPage() {
                 )}
               </div>
 
-              {/* WhatsApp Action button if phone exists */}
-              {selectedOrder.customerInfo?.phone && (
-                <div className="pt-1 flex gap-3">
+              {/* Actions footer */}
+              <div className="pt-2 flex flex-wrap gap-3">
+                {selectedOrder.customerInfo?.phone && (
                   <a 
                     href={`https://wa.me/${selectedOrder.customerInfo.phone.replace(/\D/g, '')}?text=Bonjour%20${encodeURIComponent(selectedOrder.customerInfo?.name || '')},%20concernant%20votre%20commande%20de%20${encodeURIComponent(selectedOrder.product?.name || '')}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex-1"
+                    className="flex-1 min-w-[200px]"
                   >
                     <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl h-11 flex items-center justify-center gap-2 shadow-sm">
                       <MessageCircle className="w-4 h-4" />
                       Chat Customer on WhatsApp
                     </Button>
                   </a>
-                  <Button 
-                    variant="outline" 
-                    onClick={() => setSelectedOrder(null)}
-                    className="border-slate-200 rounded-xl h-11 px-5"
-                  >
-                    Close
-                  </Button>
-                </div>
-              )}
+                )}
+                <Button 
+                  variant="outline" 
+                  onClick={() => handleDeleteOrder(selectedOrder.id)}
+                  className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 rounded-xl h-11 px-4 flex items-center gap-1.5"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Delete Lead
+                </Button>
+                <Button 
+                  variant="outline" 
+                  onClick={() => setSelectedOrder(null)}
+                  className="border-slate-200 rounded-xl h-11 px-5"
+                >
+                  Close
+                </Button>
+              </div>
             </div>
           </div>
         </div>
