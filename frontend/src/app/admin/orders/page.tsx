@@ -21,13 +21,6 @@ import {
 } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import { toast } from 'sonner';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
 
 export default function OrdersPage() {
   const [activeTab, setActiveTab] = useState('New');
@@ -372,153 +365,164 @@ export default function OrdersPage() {
         )}
       </div>
 
-      {/* Admin Order Details & Status Management Modal */}
-      <Dialog open={!!selectedOrder} onOpenChange={(open) => !open && setSelectedOrder(null)}>
-        <DialogContent className="sm:max-w-xl rounded-2xl bg-white p-6 shadow-xl border-slate-100">
-          {selectedOrder && (
-            <div>
-              <DialogHeader className="border-b border-slate-100 pb-4">
-                <div className="flex items-center justify-between">
+      {/* Admin Order Details & Status Management Modal (Self-Contained Overlay) */}
+      {selectedOrder && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
+          onClick={() => setSelectedOrder(null)}
+        >
+          <div 
+            className="bg-white rounded-2xl shadow-2xl border border-slate-100 max-w-xl w-full max-h-[90vh] overflow-y-auto p-6 relative animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="border-b border-slate-100 pb-4 flex items-center justify-between">
+              <div>
+                <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                  Order #{selectedOrder.id.slice(0, 8)}
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Store: <strong className="text-slate-800">{selectedOrder.seller?.storeName || 'RUVANO'}</strong> • {new Date(selectedOrder.createdAt).toLocaleString()}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={`px-3 py-1 text-xs font-bold rounded-full uppercase ${
+                  selectedOrder.status === 'DELIVERED' ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' :
+                  selectedOrder.status === 'NEW' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                  'bg-purple-50 text-purple-600 border border-purple-200'
+                }`}>
+                  {selectedOrder.status}
+                </span>
+                <button 
+                  onClick={() => setSelectedOrder(null)}
+                  className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 hover:text-slate-800 transition-colors ml-2"
+                >
+                  <XCircle className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="py-4 space-y-4">
+              {/* Product Section */}
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1.5">
+                  <ShoppingBag className="w-3.5 h-3.5 text-purple-600" /> Product Details
+                </div>
+                <div className="flex items-start justify-between">
                   <div>
-                    <DialogTitle className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                      Order #{selectedOrder.id.slice(0, 8)}
-                    </DialogTitle>
-                    <DialogDescription className="text-xs text-slate-500 mt-1">
-                      Store: <strong className="text-slate-800">{selectedOrder.seller?.storeName || 'RUVANO'}</strong> • {new Date(selectedOrder.createdAt).toLocaleString()}
-                    </DialogDescription>
+                    <h4 className="font-bold text-slate-900 text-sm">{selectedOrder.product?.name || 'Unknown Product'}</h4>
+                    <p className="text-xs text-slate-500 font-mono mt-0.5">SKU: {selectedOrder.product?.sku || 'N/A'}</p>
                   </div>
-                  <span className={`px-3 py-1 text-xs font-bold rounded-full uppercase ${
-                    selectedOrder.status === 'DELIVERED' ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' :
-                    selectedOrder.status === 'NEW' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
-                    'bg-purple-50 text-purple-600 border border-purple-200'
-                  }`}>
-                    {selectedOrder.status}
-                  </span>
-                </div>
-              </DialogHeader>
-
-              <div className="py-4 space-y-4">
-                {/* Product Section */}
-                <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
-                  <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1.5">
-                    <ShoppingBag className="w-3.5 h-3.5 text-purple-600" /> Product Details
-                  </div>
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <h4 className="font-bold text-slate-900 text-sm">{selectedOrder.product?.name || 'Unknown Product'}</h4>
-                      <p className="text-xs text-slate-500 font-mono mt-0.5">SKU: {selectedOrder.product?.sku || 'N/A'}</p>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-base font-black text-slate-900">
-                        {selectedOrder.totalPrice ?? selectedOrder.price ?? 0} DH
-                      </div>
+                  <div className="text-right">
+                    <div className="text-base font-black text-slate-900">
+                      {selectedOrder.totalPrice ?? selectedOrder.price ?? 0} DH
                     </div>
                   </div>
                 </div>
+              </div>
 
-                {/* Customer Section */}
-                <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 space-y-3">
-                  <div className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                    <Phone className="w-3.5 h-3.5 text-purple-600" /> Customer Information
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-3 text-xs">
-                    <div>
-                      <span className="text-slate-400 font-medium">Name:</span>
-                      <p className="font-bold text-slate-900 mt-0.5">{selectedOrder.customerInfo?.name || 'N/A'}</p>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 font-medium">Phone:</span>
-                      <p className="font-bold text-slate-900 mt-0.5 font-mono">{selectedOrder.customerInfo?.phone || 'N/A'}</p>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 font-medium">City:</span>
-                      <p className="font-bold text-slate-900 mt-0.5">{selectedOrder.customerInfo?.city || 'N/A'}</p>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 font-medium">Source:</span>
-                      <p className="font-bold text-purple-600 mt-0.5 uppercase">{selectedOrder.customerInfo?.source || 'MANUAL'}</p>
-                    </div>
-                  </div>
-
-                  {selectedOrder.customerInfo?.address && (
-                    <div className="pt-2 border-t border-slate-200/60 text-xs">
-                      <span className="text-slate-400 font-medium">Delivery Address:</span>
-                      <p className="text-slate-800 font-medium mt-0.5">{selectedOrder.customerInfo.address}</p>
-                    </div>
-                  )}
+              {/* Customer Section */}
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 space-y-3">
+                <div className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                  <Phone className="w-3.5 h-3.5 text-purple-600" /> Customer Information
                 </div>
-
-                {/* Call Center / Delivery Actions */}
-                <div className="p-4 rounded-xl bg-purple-50/50 border border-purple-100">
-                  <div className="text-xs font-bold uppercase tracking-wider text-purple-700 mb-2">
-                    Update Order Lifecycle Status:
+                
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <span className="text-slate-400 font-medium">Name:</span>
+                    <p className="font-bold text-slate-900 mt-0.5">{selectedOrder.customerInfo?.name || 'N/A'}</p>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button 
-                      size="sm" 
-                      disabled={updatingStatus || selectedOrder.status === 'CONFIRMED'}
-                      onClick={() => handleUpdateStatus(selectedOrder.id, 'CONFIRMED')}
-                      className="bg-purple-600 hover:bg-purple-700 text-white text-xs h-8 rounded-lg"
-                    >
-                      <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Confirmed
-                    </Button>
-                    <Button 
-                      size="sm" 
-                      disabled={updatingStatus || selectedOrder.status === 'SHIPPED'}
-                      onClick={() => handleUpdateStatus(selectedOrder.id, 'SHIPPED')}
-                      className="bg-blue-600 hover:bg-blue-700 text-white text-xs h-8 rounded-lg"
-                    >
-                      <Truck className="w-3.5 h-3.5 mr-1" /> Shipped
-                    </Button>
-                    <Button 
-                      size="sm" 
-                      disabled={updatingStatus || selectedOrder.status === 'DELIVERED'}
-                      onClick={() => handleUpdateStatus(selectedOrder.id, 'DELIVERED')}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-8 rounded-lg"
-                    >
-                      <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Delivered
-                    </Button>
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      disabled={updatingStatus || selectedOrder.status === 'CANCELLED'}
-                      onClick={() => handleUpdateStatus(selectedOrder.id, 'CANCELLED')}
-                      className="border-red-200 text-red-600 hover:bg-red-50 text-xs h-8 rounded-lg"
-                    >
-                      <XCircle className="w-3.5 h-3.5 mr-1" /> Cancel
-                    </Button>
+                  <div>
+                    <span className="text-slate-400 font-medium">Phone:</span>
+                    <p className="font-bold text-slate-900 mt-0.5 font-mono">{selectedOrder.customerInfo?.phone || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 font-medium">City:</span>
+                    <p className="font-bold text-slate-900 mt-0.5">{selectedOrder.customerInfo?.city || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 font-medium">Source:</span>
+                    <p className="font-bold text-purple-600 mt-0.5 uppercase">{selectedOrder.customerInfo?.source || 'MANUAL'}</p>
                   </div>
                 </div>
 
-                {/* WhatsApp button */}
-                {selectedOrder.customerInfo?.phone && (
-                  <div className="pt-1 flex gap-3">
-                    <a 
-                      href={`https://wa.me/${selectedOrder.customerInfo.phone.replace(/\D/g, '')}?text=Bonjour%20${encodeURIComponent(selectedOrder.customerInfo?.name || '')},%20concernant%20votre%20commande`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex-1"
-                    >
-                      <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl h-11 flex items-center justify-center gap-2 shadow-sm">
-                        <MessageCircle className="w-4 h-4" />
-                        Call / WhatsApp Customer
-                      </Button>
-                    </a>
-                    <Button 
-                      variant="outline" 
-                      onClick={() => setSelectedOrder(null)}
-                      className="border-slate-200 rounded-xl h-11 px-5"
-                    >
-                      Close
-                    </Button>
+                {selectedOrder.customerInfo?.address && (
+                  <div className="pt-2 border-t border-slate-200/60 text-xs">
+                    <span className="text-slate-400 font-medium">Delivery Address:</span>
+                    <p className="text-slate-800 font-medium mt-0.5">{selectedOrder.customerInfo.address}</p>
                   </div>
                 )}
               </div>
+
+              {/* Call Center / Delivery Actions */}
+              <div className="p-4 rounded-xl bg-purple-50/50 border border-purple-100">
+                <div className="text-xs font-bold uppercase tracking-wider text-purple-700 mb-2">
+                  Update Order Lifecycle Status:
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button 
+                    size="sm" 
+                    disabled={updatingStatus || selectedOrder.status === 'CONFIRMED'}
+                    onClick={() => handleUpdateStatus(selectedOrder.id, 'CONFIRMED')}
+                    className="bg-purple-600 hover:bg-purple-700 text-white text-xs h-8 rounded-lg"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Confirmed
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    disabled={updatingStatus || selectedOrder.status === 'SHIPPED'}
+                    onClick={() => handleUpdateStatus(selectedOrder.id, 'SHIPPED')}
+                    className="bg-blue-600 hover:bg-blue-700 text-white text-xs h-8 rounded-lg"
+                  >
+                    <Truck className="w-3.5 h-3.5 mr-1" /> Shipped
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    disabled={updatingStatus || selectedOrder.status === 'DELIVERED'}
+                    onClick={() => handleUpdateStatus(selectedOrder.id, 'DELIVERED')}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-8 rounded-lg"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Delivered
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    variant="outline"
+                    disabled={updatingStatus || selectedOrder.status === 'CANCELLED'}
+                    onClick={() => handleUpdateStatus(selectedOrder.id, 'CANCELLED')}
+                    className="border-red-200 text-red-600 hover:bg-red-50 text-xs h-8 rounded-lg"
+                  >
+                    <XCircle className="w-3.5 h-3.5 mr-1" /> Cancel
+                  </Button>
+                </div>
+              </div>
+
+              {/* WhatsApp button */}
+              {selectedOrder.customerInfo?.phone && (
+                <div className="pt-1 flex gap-3">
+                  <a 
+                    href={`https://wa.me/${selectedOrder.customerInfo.phone.replace(/\D/g, '')}?text=Bonjour%20${encodeURIComponent(selectedOrder.customerInfo?.name || '')},%20concernant%20votre%20commande`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1"
+                  >
+                    <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl h-11 flex items-center justify-center gap-2 shadow-sm">
+                      <MessageCircle className="w-4 h-4" />
+                      Call / WhatsApp Customer
+                    </Button>
+                  </a>
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setSelectedOrder(null)}
+                    className="border-slate-200 rounded-xl h-11 px-5"
+                  >
+                    Close
+                  </Button>
+                </div>
+              )}
             </div>
-          )}
-        </DialogContent>
-      </Dialog>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
