@@ -36,9 +36,11 @@ const sellerLinks = [
   { name: 'Create Lead', href: '/seller/leads/create', icon: PlusCircle },
   { name: 'Import Leads', href: '/seller/leads/import', icon: Upload },
   { name: 'Integrations', href: '/seller/integrations', icon: Zap },
+  { name: 'Wallet', href: '/seller/wallet', icon: CreditCard },
   { name: 'Simulation', href: '/seller/simulation', icon: Activity },
   { name: 'AI Studio', href: '/seller/ai-studio', icon: Sparkles },
   { name: 'Services', href: '/seller/services', icon: Blocks },
+  { name: 'Support', href: '/seller/support', icon: Headset },
   { name: 'Settings', href: '/seller/settings', icon: Settings },
 ];
 
@@ -96,7 +98,12 @@ export function Sidebar() {
 
       {/* Footer Support Buttons */}
       <div className="px-4 py-4 space-y-2 bg-[#140d27] border-t border-white/5">
-        <button className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 transition-colors text-left group">
+        <a 
+          href="https://wa.me/212649847132?text=Hello%20ZIDCOD%20Support,%20I%20need%20assistance%20with%20my%20seller%20account"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 transition-colors text-left group cursor-pointer"
+        >
           <div className="bg-[#6d28d9] p-2 rounded-lg shrink-0">
             <MessageCircle className="w-5 h-5 text-white" />
           </div>
@@ -104,7 +111,7 @@ export function Sidebar() {
             <span className="text-[14px] font-bold text-white truncate leading-tight">WhatsApp</span>
             <span className="text-[12px] text-slate-400 truncate leading-tight mt-0.5 group-hover:text-slate-300">Chat with your account mana...</span>
           </div>
-        </button>
+        </a>
         <button className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 transition-colors text-left group">
           <div className="bg-[#6d28d9] p-2 rounded-lg shrink-0">
             <PlayCircle className="w-5 h-5 text-white" />

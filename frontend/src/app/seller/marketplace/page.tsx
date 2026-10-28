@@ -7,10 +7,11 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { 
   Search, Package, Eye, Lock, Check, Clock, ChevronLeft, ChevronRight, 
-  ArrowRight, Sparkles, Filter
+  ArrowRight, Sparkles, Filter, Loader2
 } from 'lucide-react';
 import { Input } from "@/components/ui/input";
 import api from '@/lib/api';
+import { toast } from 'sonner';
 
 export default function SellerMarketplacePage() {
   const { data: session, status } = useSession();
@@ -24,6 +25,36 @@ export default function SellerMarketplacePage() {
   const [sortBy, setSortBy] = useState('APPROVED_FIRST');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 12;
+  const [requestingId, setRequestingId] = useState<string | null>(null);
+
+  const handleDirectRequestAccess = async (e: React.MouseEvent, productId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (requestingId) return;
+
+    setRequestingId(productId);
+    try {
+      await api.post(`/products/${productId}/request-access`);
+      toast.success("Access request submitted! Admin will review your store within 24 hours.");
+      // Optimistically update the product state locally
+      setProducts(prev => prev.map(p => {
+        if (p.id === productId) {
+          return {
+            ...p,
+            sellerOffer: {
+              ...(p.sellerOffer || {}),
+              approvedStatus: 'PENDING'
+            }
+          };
+        }
+        return p;
+      }));
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Failed to request access");
+    } finally {
+      setRequestingId(null);
+    }
+  };
 
   const fetchMarketplaceProducts = useCallback(async () => {
     try {
@@ -327,23 +358,31 @@ export default function SellerMarketplacePage() {
                             </Button>
                           </Link>
                         ) : isPending ? (
-                          <Link href={`/seller/marketplace/${product.id}`} className="block w-full">
-                            <Button 
-                              className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold h-10 rounded-xl text-xs shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
-                            >
-                              <Clock className="w-3.5 h-3.5" />
-                              Pending Approval
-                            </Button>
-                          </Link>
+                          <Button 
+                            disabled
+                            className="w-full bg-amber-500 text-white font-bold h-10 rounded-xl text-xs shadow-xs flex items-center justify-center gap-1.5 opacity-90 cursor-not-allowed"
+                          >
+                            <Clock className="w-3.5 h-3.5" />
+                            Pending Approval
+                          </Button>
                         ) : (
-                          <Link href={`/seller/marketplace/${product.id}`} className="block w-full">
-                            <Button 
-                              className="w-full bg-[#0f172a] hover:bg-[#1e293b] text-white font-bold h-10 rounded-xl text-xs shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
-                            >
-                              <Lock className="w-3.5 h-3.5" />
-                              Request Access
-                            </Button>
-                          </Link>
+                          <Button 
+                            onClick={(e) => handleDirectRequestAccess(e, product.id)}
+                            disabled={requestingId === product.id}
+                            className="w-full bg-[#0f172a] hover:bg-[#1e293b] text-white font-bold h-10 rounded-xl text-xs shadow-xs flex items-center justify-center gap-1.5 cursor-pointer transition-colors disabled:opacity-75"
+                          >
+                            {requestingId === product.id ? (
+                              <>
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                Submitting...
+                              </>
+                            ) : (
+                              <>
+                                <Lock className="w-3.5 h-3.5" />
+                                Request Access
+                              </>
+                            )}
+                          </Button>
                         )}
                       </div>
 

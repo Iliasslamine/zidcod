@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { LedgerEntryType, LedgerEntryStatus } from '@prisma/client';
 
@@ -61,12 +61,29 @@ export class LedgerService {
       available: available._sum.amount || 0,
       pendingPayout: pending._sum.amount || 0,
       paid: paid._sum.amount || 0,
+      rib: seller.rib || null,
+      bankName: seller.bankName || null,
     };
   }
 
   async requestPayout(userId: string) {
     const seller = await this.prisma.seller.findUnique({ where: { userId } });
-    if (!seller) throw new Error('Seller not found');
+    if (!seller) throw new NotFoundException('Seller not found');
+
+    const cleanRib = (seller.rib || '').replace(/\D/g, '');
+    if (!cleanRib || cleanRib.length !== 24) {
+      throw new BadRequestException('Please add your 24-digit Bank RIB in Settings before requesting a payout.');
+    }
+
+    const available = await this.prisma.ledgerEntry.aggregate({
+      _sum: { amount: true },
+      where: { sellerId: seller.id, status: LedgerEntryStatus.AVAILABLE, type: LedgerEntryType.SELLER_COMMISSION }
+    });
+
+    const balance = available._sum.amount || 0;
+    if (balance <= 0) {
+      throw new BadRequestException('Insufficient balance to request a payout.');
+    }
 
     return this.prisma.ledgerEntry.updateMany({
       where: {

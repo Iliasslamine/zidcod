@@ -152,6 +152,69 @@ export class ProductsService {
     });
   }
 
+  async requestAccessDirect(productId: string, userId: string, plannedPrice?: number) {
+    let seller = await this.prisma.seller.findUnique({
+      where: { userId },
+    });
+
+    if (!seller) {
+      const user = await this.prisma.user.findUnique({ where: { id: userId } });
+      if (user) {
+        seller = await this.prisma.seller.create({
+          data: {
+            userId: user.id,
+            storeName: user.email.split('@')[0].toUpperCase(),
+            contact: '+212600000000',
+            status: 'ACTIVE',
+          },
+        });
+      } else {
+        throw new NotFoundException('User not found');
+      }
+    }
+
+    const product = await this.prisma.product.findUnique({ where: { id: productId } });
+    if (!product) throw new NotFoundException('Product not found');
+
+    const baseCost = product.costPrice ?? product.adminCosts ?? 25;
+    const confFee = product.confirmationFee ?? 10;
+    const delivFee = product.deliveryFee ?? 32;
+    const packFee = product.packagingFee ?? 3;
+    const minPrice = product.sellingPrice || (baseCost + confFee + delivFee + packFee);
+    const chosenPrice = plannedPrice && plannedPrice >= minPrice ? plannedPrice : minPrice;
+
+    const existingOffer = await this.prisma.sellerProductOffer.findUnique({
+      where: {
+        sellerId_productId: {
+          sellerId: seller.id,
+          productId,
+        },
+      },
+    });
+
+    if (existingOffer) {
+      if (existingOffer.approvedStatus === 'APPROVED') {
+        return existingOffer;
+      }
+      return this.prisma.sellerProductOffer.update({
+        where: { id: existingOffer.id },
+        data: {
+          minimumPrice: chosenPrice,
+          approvedStatus: 'PENDING',
+        },
+      });
+    }
+
+    return this.prisma.sellerProductOffer.create({
+      data: {
+        sellerId: seller.id,
+        productId,
+        minimumPrice: chosenPrice,
+        approvedStatus: 'PENDING',
+      },
+    });
+  }
+
   findAllRequests() {
     return this.prisma.sellerProductOffer.findMany({
       include: {

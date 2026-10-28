@@ -64,4 +64,13 @@ export class ProductsController {
   ) {
     return this.productsService.requestAccess(id, req.user.sub, dto);
   }
+
+  @Post(':id/request-access')
+  requestAccessDirect(
+    @Param('id') id: string,
+    @Request() req: any,
+    @Body() body?: { minimumPrice?: number }
+  ) {
+    return this.productsService.requestAccessDirect(id, req.user.sub, body?.minimumPrice);
+  }
 }
