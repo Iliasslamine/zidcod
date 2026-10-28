@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Get } from '@nestjs/common';
+import { Controller, Post, Body, Get, Put, Query } from '@nestjs/common';
 import { UsersService } from './users.service.js';
 import { CreateUserDto } from './dto/create-user.dto.js';
 import { Role } from '@prisma/client';
@@ -36,4 +36,34 @@ export class UsersController {
   getSellers() {
     return this.usersService.findAllSellers();
   }
+
+  @Get('profile')
+  getProfile(@Query('identifier') identifier?: string) {
+    return this.usersService.getSellerProfile(identifier);
+  }
+
+  @Put('profile')
+  updateProfile(
+    @Body() body: { identifier?: string; fullName?: string; storeName?: string; contact?: string; city?: string },
+  ) {
+    const identifier = body.identifier || 'ilyasslamine@gmail.com';
+    return this.usersService.updateSellerProfile(identifier, body);
+  }
+
+  @Put('bank')
+  updateBank(
+    @Body() body: { identifier?: string; bankName: string; rib: string },
+  ) {
+    const identifier = body.identifier || 'ilyasslamine@gmail.com';
+    return this.usersService.updateSellerBank(identifier, body);
+  }
+
+  @Put('security')
+  updateSecurity(
+    @Body() body: { identifier?: string; currentPassword?: string; newPassword: string },
+  ) {
+    const identifier = body.identifier || 'ilyasslamine@gmail.com';
+    return this.usersService.updateSellerSecurity(identifier, body);
+  }
 }
+

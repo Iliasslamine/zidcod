@@ -39,6 +39,7 @@ const sellerLinks = [
   { name: 'Simulation', href: '/seller/simulation', icon: Activity },
   { name: 'AI Studio', href: '/seller/ai-studio', icon: Sparkles },
   { name: 'Services', href: '/seller/services', icon: Blocks },
+  { name: 'Settings', href: '/seller/settings', icon: Settings },
 ];
 
 export function Sidebar() {
