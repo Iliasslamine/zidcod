@@ -69,8 +69,9 @@ export class OrdersService {
       const phone = String(row.phone || row.phoneNumber || row['Phone Number'] || '').trim();
       const city = String(row.city || row['City'] || 'Casablanca').trim();
       const address = String(row.address || row.fullAddress || row['Full Address'] || '').trim();
-      const price = parseFloat(row.price || row['Price']) || 0;
-      const quantity = parseInt(row.quantity || row['Quantity'], 10) || 1;
+      const rawPriceStr = String(row.price ?? row['Price'] ?? '').replace(/[^\d.]/g, '');
+      const price = parseFloat(rawPriceStr) || 0;
+      const quantity = parseInt(String(row.quantity ?? row['Quantity'] ?? '1').replace(/[^\d]/g, ''), 10) || 1;
       const notes = String(row.notes || row.note || row['Notes'] || '').trim();
 
       if (!customer || !phone) {

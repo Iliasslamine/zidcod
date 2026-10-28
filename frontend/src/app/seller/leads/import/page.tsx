@@ -56,7 +56,7 @@ export default function ImportLeadsPage() {
       });
   }, []);
 
-  // 1. Download CSV Template
+  // 1. Download CSV Template (Aligned with zidcod_orders_template)
   const handleDownloadTemplate = () => {
     const headers = [
       'Product SKU',
@@ -66,12 +66,14 @@ export default function ImportLeadsPage() {
       'Full Address',
       'Price',
       'Quantity',
-      'Notes'
+      'Notes',
+      'Sync Status'
     ];
 
     const sampleRows = [
-      ['NutriKids-1', 'Fatima Zahra', '+212612345678', 'Casablanca', 'Hay Riad Rue 14 Imm 3', '199', '1', 'Appeler après 14h'],
-      ['DOLI-1', 'Youssef Benali', '+212698765432', 'Rabat', 'Avenue Mohammed V N 45', '249', '1', 'Livraison urgente']
+      ['NutriKids-1', 'Fatima Zahra', '+212612345678', 'Casablanca', 'Hay Riad Rue 14 Imm 3', '199 DH', '1', 'Appeler après 14h', ''],
+      ['DOLI-1', 'Youssef Benali', '+212698765432', 'Rabat', 'Avenue Mohammed V N 45', '249 DH', '1', 'Livraison urgente', ''],
+      ['DOLI-2', 'Youssef Benali', '+212698765433', 'Rabat', 'Avenue Mohammed V N 46', '249 DH', '1', 'Livraison urgente', '']
     ];
 
     const csvContent = [
@@ -204,8 +206,10 @@ export default function ImportLeadsPage() {
           if (!phone) errors.push('Missing Phone');
           if (!sku) errors.push('Missing SKU');
 
-          const price = parseFloat(rawPrice) || 0;
-          const quantity = parseInt(rawQty, 10) || 1;
+          const cleanPrice = String(rawPrice || '').replace(/[^\d.]/g, '');
+          const price = parseFloat(cleanPrice) || 0;
+          const cleanQty = String(rawQty || '1').replace(/[^\d]/g, '');
+          const quantity = parseInt(cleanQty, 10) || 1;
 
           return {
             id: idx + 1,

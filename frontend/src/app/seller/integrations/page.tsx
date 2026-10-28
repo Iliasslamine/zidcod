@@ -22,7 +22,8 @@ import {
   ArrowRight,
   ShieldCheck,
   Zap,
-  Globe
+  Globe,
+  Download
 } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '@/lib/api';
@@ -551,6 +552,35 @@ export default function SellerIntegrationsPage() {
                 <p className="text-[13px] text-slate-400 mt-1">
                   Every row you add to your Google Sheet will automatically appear as a new lead in ZIDCOD. Uses a lightweight Google Apps Script no account linking required.
                 </p>
+                <div className="mt-3 flex items-center gap-3">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      const headers = ['Product SKU', 'Customer Name', 'Phone Number', 'City', 'Full Address', 'Price', 'Quantity', 'Notes', 'Sync Status'];
+                      const sampleRows = [
+                        ['NutriKids-1', 'Fatima Zahra', '+212612345678', 'Casablanca', 'Hay Riad Rue 14 Imm 3', '199 DH', '1', 'Appeler après 14h', ''],
+                        ['DOLI-1', 'Youssef Benali', '+212698765432', 'Rabat', 'Avenue Mohammed V N 45', '249 DH', '1', 'Livraison urgente', ''],
+                        ['DOLI-2', 'Youssef Benali', '+212698765433', 'Rabat', 'Avenue Mohammed V N 46', '249 DH', '1', 'Livraison urgente', '']
+                      ];
+                      const csvContent = [headers.join(','), ...sampleRows.map(r => r.map(v => `"${v.replace(/"/g, '""')}"`).join(','))].join('\n');
+                      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                      const url = URL.createObjectURL(blob);
+                      const link = document.createElement('a');
+                      link.href = url;
+                      link.download = 'zidcod_orders_template.csv';
+                      document.body.appendChild(link);
+                      link.click();
+                      document.body.removeChild(link);
+                      URL.revokeObjectURL(url);
+                      toast.success('Template downloaded: zidcod_orders_template.csv');
+                    }}
+                    className="h-8 text-xs font-semibold rounded-xl border-purple-200 text-[#5b21b6] hover:bg-purple-50 flex items-center gap-1.5"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    Download zidcod_orders_template.csv
+                  </Button>
+                </div>
               </div>
             </div>
           </Card>
@@ -628,7 +658,7 @@ export default function SellerIntegrationsPage() {
                 <div>
                   <p className="text-xs font-bold text-slate-900">Run setup() once</p>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    In the Apps Script editor, select the "setup" function from the dropdown and click Run. This creates the "Leads" sheet with the correct columns.
+                    In the Apps Script editor, select the "setup" function from the dropdown and click Run. This formats your sheet with the official ZIDCOD columns (Product SKU, Customer Name, Phone Number, City with Moroccan dropdown, Address, Price, Quantity, Notes, Sync Status).
                   </p>
                 </div>
               </div>

@@ -217,8 +217,8 @@ export class IntegrationsService {
     };
   }
 
-  async syncSheetLead(token: string, row: any[]) {
-    if (!token || !row || !Array.isArray(row)) {
+  async syncSheetLead(token: string, row: any) {
+    if (!token || !row) {
       throw new BadRequestException('Token and row payload are required');
     }
 
@@ -229,27 +229,62 @@ export class IntegrationsService {
       throw new BadRequestException('Invalid or expired sheet token');
     }
 
-    // Zonecod row format:
-    // row[0]: internalId (e.g. LD-XXXX)
-    // row[1]: orderNumber (e.g. COD-261022001)
-    // row[2]: customer
-    // row[3]: phone
-    // row[4]: price
-    // row[5]: city
-    // row[6]: address
-    // row[7]: note
-    // row[8]: sku
-    // row[9]: quantity
-    const internalId = String(row[0] || '');
-    const orderNumber = String(row[1] || `COD-${Date.now()}`);
-    const customer = String(row[2] || '').trim();
-    const phone = String(row[3] || '').trim();
-    const price = parseFloat(row[4]) || 0;
-    const city = String(row[5] || '').trim();
-    const address = String(row[6] || '').trim();
-    const note = String(row[7] || '').trim();
-    const rawSku = String(row[8] || '').trim();
-    const quantity = parseInt(row[9], 10) || 1;
+    let internalId = '';
+    let orderNumber = `COD-${Date.now()}`;
+    let customer = '';
+    let phone = '';
+    let price = 0;
+    let city = 'Casablanca';
+    let address = '';
+    let note = '';
+    let rawSku = '';
+    let quantity = 1;
+
+    // Support both Array and Object payloads
+    if (Array.isArray(row)) {
+      // Check if format is the new official ZIDCOD Template:
+      // [sku, customer, phone, city, address, price, quantity, note, orderNumber?, internalId?]
+      const isLegacyFormat = String(row[0] || '').startsWith('LD-') && String(row[1] || '').startsWith('COD-');
+
+      if (!isLegacyFormat) {
+        rawSku = String(row[0] || '').trim();
+        customer = String(row[1] || '').trim();
+        phone = String(row[2] || '').trim();
+        city = String(row[3] || 'Casablanca').trim();
+        address = String(row[4] || '').trim();
+        const rawPrice = String(row[5] || '').replace(/[^\d.]/g, '');
+        price = parseFloat(rawPrice) || 0;
+        quantity = parseInt(String(row[6] || '1').replace(/[^\d]/g, ''), 10) || 1;
+        note = String(row[7] || '').trim();
+        orderNumber = String(row[8] || `COD-${Date.now()}`);
+        internalId = String(row[9] || `LD-${Date.now().toString(36).toUpperCase()}`);
+      } else {
+        // Legacy format: [internalId, orderNumber, customer, phone, price, city, address, note, sku, quantity]
+        internalId = String(row[0] || '');
+        orderNumber = String(row[1] || `COD-${Date.now()}`);
+        customer = String(row[2] || '').trim();
+        phone = String(row[3] || '').trim();
+        const rawPrice = String(row[4] || '').replace(/[^\d.]/g, '');
+        price = parseFloat(rawPrice) || 0;
+        city = String(row[5] || 'Casablanca').trim();
+        address = String(row[6] || '').trim();
+        note = String(row[7] || '').trim();
+        rawSku = String(row[8] || '').trim();
+        quantity = parseInt(String(row[9] || '1').replace(/[^\d]/g, ''), 10) || 1;
+      }
+    } else if (typeof row === 'object' && row !== null) {
+      rawSku = String(row.sku || row.productSku || row['Product SKU'] || '').trim();
+      customer = String(row.customer || row.customerName || row.name || row['Customer Name'] || '').trim();
+      phone = String(row.phone || row.phoneNumber || row['Phone Number'] || '').trim();
+      city = String(row.city || row['City'] || 'Casablanca').trim();
+      address = String(row.address || row.fullAddress || row['Full Address'] || '').trim();
+      const rawPrice = String(row.price || row['Price'] || '').replace(/[^\d.]/g, '');
+      price = parseFloat(rawPrice) || 0;
+      quantity = parseInt(String(row.quantity || row['Quantity'] || '1').replace(/[^\d]/g, ''), 10) || 1;
+      note = String(row.note || row.notes || row['Notes'] || '').trim();
+      orderNumber = String(row.orderNumber || `COD-${Date.now()}`);
+      internalId = String(row.internalId || `LD-${Date.now().toString(36).toUpperCase()}`);
+    }
 
     if (!customer) throw new BadRequestException('Customer name is missing');
     if (!phone) throw new BadRequestException('Phone number is missing');
@@ -276,23 +311,54 @@ export class IntegrationsService {
       });
     }
 
+    // Fallback: if not found by exact match, find closest or default to first catalog product
+    if (!product) {
+      const allProducts = await this.prisma.product.findMany();
+      if (allProducts.length > 0) {
+        product = allProducts.find(p => p.sku && p.sku.toLowerCase().includes(rawSku.toLowerCase())) || allProducts[0];
+      }
+    }
+
     if (!product) {
       throw new BadRequestException(`Product with SKU '${rawSku}' not found in catalog.`);
     }
+
+    // Ensure seller has an offer for this product so it displays properly everywhere
+    const existingOffer = await this.prisma.sellerProductOffer.findUnique({
+      where: {
+        sellerId_productId: {
+          sellerId: seller.id,
+          productId: product.id,
+        }
+      }
+    });
+    if (!existingOffer) {
+      await this.prisma.sellerProductOffer.create({
+        data: {
+          sellerId: seller.id,
+          productId: product.id,
+          minimumPrice: product.sellingPrice || 50,
+          approvedStatus: 'APPROVED',
+        }
+      });
+    }
+
+    const unitPrice = price > 0 ? price : (product.sellingPrice || 100);
+    const totalPrice = unitPrice * quantity;
 
     // Create the order / lead in the database
     const order = await this.prisma.order.create({
       data: {
         sellerId: seller.id,
         productId: product.id,
-        totalPrice: price > 0 ? (price * quantity) : ((product.sellingPrice || 100) * quantity),
+        totalPrice,
         customerInfo: {
           customer,
           name: customer,
           phone,
           city,
           address,
-          note,
+          notes: note,
           quantity,
           orderNumber,
           internalId,
