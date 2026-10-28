@@ -45,6 +45,11 @@ export class OrdersController {
     return this.ordersService.deleteOrder(req.user.sub, req.user.role, id);
   }
 
+  @Post('bulk-delete')
+  deleteBatchOrders(@Body('orderIds') orderIds: string[], @Request() req: any) {
+    return this.ordersService.deleteBatchOrders(req.user.sub, req.user.role, orderIds);
+  }
+
   @Delete()
   deleteAllOrders(@Request() req: any) {
     return this.ordersService.deleteAllOrders(req.user.sub, req.user.role);

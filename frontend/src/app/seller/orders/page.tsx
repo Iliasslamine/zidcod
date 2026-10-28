@@ -30,7 +30,39 @@ export default function SellerOrdersPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCity, setSelectedCity] = useState('All');
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const { data: session } = useSession();
+
+  const handleToggleSelectAll = () => {
+    if (selectedIds.length === filteredOrders.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(filteredOrders.map(o => o.id));
+    }
+  };
+
+  const handleToggleSelectOne = (id: string) => {
+    setSelectedIds(prev => 
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedIds.length === 0) return;
+    if (!window.confirm(`Are you sure you want to delete ${selectedIds.length} selected lead(s)?`)) return;
+    try {
+      const token = (session as any)?.accessToken;
+      await axios.post('http://localhost:4000/orders/bulk-delete', 
+        { orderIds: selectedIds }, 
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      toast.success(`${selectedIds.length} lead(s) deleted successfully`);
+      setOrders(prev => prev.filter(o => !selectedIds.includes(o.id)));
+      setSelectedIds([]);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed to delete selected leads');
+    }
+  };
 
   const handleDeleteOrder = async (orderId: string) => {
     if (!window.confirm('Are you sure you want to delete this lead?')) return;
@@ -41,6 +73,7 @@ export default function SellerOrdersPage() {
       });
       toast.success('Lead deleted successfully');
       setOrders(prev => prev.filter(o => o.id !== orderId));
+      setSelectedIds(prev => prev.filter(id => id !== orderId));
       if (selectedOrder?.id === orderId) {
         setSelectedOrder(null);
       }
@@ -58,6 +91,7 @@ export default function SellerOrdersPage() {
       });
       toast.success('All leads deleted successfully');
       setOrders([]);
+      setSelectedIds([]);
       setSelectedOrder(null);
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Failed to delete all leads');
@@ -279,6 +313,27 @@ export default function SellerOrdersPage() {
             ))}
           </select>
 
+          {selectedIds.length > 0 && (
+            <Button
+              onClick={handleDeleteSelected}
+              className="h-11 px-4 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl flex items-center gap-2 text-sm shadow-md transition-all animate-in zoom-in-95"
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete Selected ({selectedIds.length})
+            </Button>
+          )}
+
+          {orders.length > 0 && (
+            <Button
+              onClick={handleDeleteAllOrders}
+              variant="outline"
+              className="h-11 px-4 border-red-200 bg-red-50/60 hover:bg-red-100 text-red-600 hover:text-red-700 font-bold rounded-xl flex items-center gap-2 text-sm shadow-xs transition-colors shrink-0"
+            >
+              <Trash2 className="w-4 h-4 text-red-500" />
+              Delete All Leads ({orders.length})
+            </Button>
+          )}
+
           {(searchQuery || selectedCity !== 'All') && (
             <button 
               onClick={() => { setSearchQuery(''); setSelectedCity('All'); }}
@@ -307,6 +362,14 @@ export default function SellerOrdersPage() {
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50/50">
+                  <th className="w-10 px-4 py-4 text-center">
+                    <input 
+                      type="checkbox" 
+                      checked={filteredOrders.length > 0 && selectedIds.length === filteredOrders.length}
+                      onChange={handleToggleSelectAll}
+                      className="w-4 h-4 rounded border-slate-300 text-purple-600 focus:ring-purple-500 cursor-pointer"
+                    />
+                  </th>
                   <th className="px-6 py-4 text-[11px] font-bold text-slate-400 uppercase tracking-wider">Order ID</th>
                   <th className="px-6 py-4 text-[11px] font-bold text-slate-400 uppercase tracking-wider">Product</th>
                   <th className="px-6 py-4 text-[11px] font-bold text-slate-400 uppercase tracking-wider">Customer</th>
@@ -322,9 +385,18 @@ export default function SellerOrdersPage() {
                   const customerPhone = order.customerInfo?.phone || order.customerPhone || '—';
                   const customerCity = order.customerInfo?.city;
                   const price = order.totalPrice ?? order.price ?? 0;
+                  const isChecked = selectedIds.includes(order.id);
 
                   return (
-                    <tr key={order.id} className="border-b border-slate-100 hover:bg-slate-50/50 transition-colors">
+                    <tr key={order.id} className={`border-b border-slate-100 hover:bg-slate-50/50 transition-colors ${isChecked ? 'bg-purple-50/30' : ''}`}>
+                      <td className="w-10 px-4 py-4 text-center">
+                        <input 
+                          type="checkbox" 
+                          checked={isChecked}
+                          onChange={() => handleToggleSelectOne(order.id)}
+                          className="w-4 h-4 rounded border-slate-300 text-purple-600 focus:ring-purple-500 cursor-pointer"
+                        />
+                      </td>
                       <td className="px-6 py-4">
                         <div className="font-semibold text-slate-800 text-[14px]">#{order.id.slice(0, 8)}</div>
                         {customer.source && (
@@ -368,7 +440,7 @@ export default function SellerOrdersPage() {
                         {new Date(order.createdAt).toLocaleDateString()}
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <div className="flex items-center justify-end gap-1">
+                        <div className="flex items-center justify-end gap-2">
                           <Button 
                             onClick={() => setSelectedOrder(order)}
                             variant="ghost" 
@@ -378,11 +450,11 @@ export default function SellerOrdersPage() {
                           </Button>
                           <Button 
                             onClick={(e) => { e.stopPropagation(); handleDeleteOrder(order.id); }}
-                            variant="ghost" 
-                            title="Delete Lead"
-                            className="h-8 w-8 p-0 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
+                            variant="outline" 
+                            className="h-8 px-2.5 text-xs font-semibold text-red-600 border-red-200 bg-red-50/50 hover:bg-red-100 hover:text-red-700 rounded-lg flex items-center gap-1 shadow-xs transition-colors"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                            Delete
                           </Button>
                         </div>
                       </td>

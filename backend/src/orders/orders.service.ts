@@ -294,4 +294,24 @@ export class OrdersService {
       return { success: true, count: res.count };
     }
   }
+
+  async deleteBatchOrders(userId: string, role: string, orderIds: string[]) {
+    if (!Array.isArray(orderIds) || orderIds.length === 0) {
+      throw new BadRequestException('No order IDs provided');
+    }
+
+    if (role === 'ADMIN') {
+      await this.prisma.ledgerEntry.deleteMany({ where: { orderId: { in: orderIds } } });
+      const res = await this.prisma.order.deleteMany({ where: { id: { in: orderIds } } });
+      return { success: true, count: res.count };
+    } else {
+      const seller = await this.prisma.seller.findUnique({ where: { userId } });
+      if (!seller) throw new NotFoundException('Seller profile not found');
+      await this.prisma.ledgerEntry.deleteMany({ where: { sellerId: seller.id, orderId: { in: orderIds } } });
+      const res = await this.prisma.order.deleteMany({
+        where: { id: { in: orderIds }, sellerId: seller.id }
+      });
+      return { success: true, count: res.count };
+    }
+  }
 }
