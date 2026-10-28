@@ -22,13 +22,13 @@ interface InternalUser {
 const mockStaff: InternalUser[] = [
   {
     id: 'u-1',
-    name: 'Abdelali Developer',
+    name: 'Iliass Lamine Developer',
     role: 'Admin',
-    isOwner: false,
-    phone: '+212708277606',
+    isOwner: true,
+    phone: '+212649847132',
     status: 'Active',
     joined: '13 sept. 2026',
-    initials: 'AB'
+    initials: 'IL'
   },
   {
     id: 'u-2',
@@ -39,7 +39,7 @@ const mockStaff: InternalUser[] = [
     phone: '—',
     status: 'Active',
     joined: '14 août 2026',
-    initials: 'YA'
+    initials: 'YD'
   }
 ];
 
