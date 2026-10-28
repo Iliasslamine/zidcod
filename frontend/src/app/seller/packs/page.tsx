@@ -1,415 +1,268 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Search, Plus, Trash2, Check, Boxes, Package, ArrowLeft } from 'lucide-react';
+import { 
+  Boxes, 
+  Plus, 
+  Trash2, 
+  Pencil, 
+  AlertTriangle, 
+  Loader2, 
+  X 
+} from 'lucide-react';
 import api from '@/lib/api';
 import { toast } from 'sonner';
-
-interface ProductItem {
-  id: string;
-  name: string;
-  sku?: string;
-  adminCosts?: number;
-  cost_price?: number;
-  imageUrl?: string;
-  image?: string;
-}
-
-interface SelectedProduct extends ProductItem {
-  quantity: number;
-}
+import { getPackSku } from '@/lib/pack-utils';
 
 export default function PacksPage() {
-  const [packName, setPackName] = useState('');
-  const [description, setDescription] = useState('');
-  const [isActive, setIsActive] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [availableProducts, setAvailableProducts] = useState<ProductItem[]>([]);
-  const [loadingProducts, setLoadingProducts] = useState(true);
-  const [selectedProducts, setSelectedProducts] = useState<SelectedProduct[]>([]);
-  const [existingPacks, setExistingPacks] = useState<any[]>([]);
-  const [showForm, setShowForm] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const router = useRouter();
+  const [packs, setPacks] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [packToDelete, setPackToDelete] = useState<any | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const fetchPacks = async () => {
+    try {
+      setLoading(true);
+      const res = await api.get('/packs');
+      if (Array.isArray(res.data)) {
+        setPacks(res.data);
+      }
+    } catch (err) {
+      console.error('Failed to load packs:', err);
+      toast.error('Failed to load packs');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    // Fetch ONLY approved products for this seller
-    setLoadingProducts(true);
-    api.get('/products/my')
-      .then(res => {
-        if (Array.isArray(res.data)) {
-          const approved = res.data.filter((p: any) => p.offerStatus === 'APPROVED' || p.approvedStatus === 'APPROVED');
-          const mapped = approved.map((p: any) => ({
-            id: p.id,
-            name: p.name,
-            sku: p.sku,
-            adminCosts: p.sellerMinimumPrice || p.adminCosts || p.sellingPrice || 35,
-            imageUrl: p.imageUrl || p.image || 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=100&h=100&fit=crop&q=80'
-          }));
-          setAvailableProducts(mapped);
-        }
-      })
-      .catch((err) => {
-        console.error('Failed to load approved products:', err);
-      })
-      .finally(() => {
-        setLoadingProducts(false);
-      });
-
-    // Fetch existing packs from backend
-    api.get('/packs')
-      .then(res => {
-        if (Array.isArray(res.data)) {
-          const formatted = res.data.map((p: any) => ({
-            id: p.id,
-            name: p.name,
-            description: p.description,
-            minimumPrice: p.minimumPrice,
-            totalUnits: p.items?.reduce((s: number, it: any) => s + (it.quantity || 1), 0) || 0,
-            products: p.items?.map((it: any) => ({
-              id: it.productId,
-              name: it.product?.name || 'Product',
-              adminCosts: it.product?.adminCosts || 35,
-              imageUrl: it.product?.imageUrl,
-              quantity: it.quantity
-            })) || [],
-            isActive: p.isActive,
-            createdAt: new Date(p.createdAt).toLocaleDateString()
-          }));
-          setExistingPacks(formatted);
-        }
-      })
-      .catch(() => {});
+    fetchPacks();
   }, []);
 
-  const totalUnits = selectedProducts.reduce((sum, p) => sum + p.quantity, 0);
-  const minimumPrice = selectedProducts.reduce((sum, p) => sum + (p.adminCosts || 35) * p.quantity, 0);
-
-  const handleAddProduct = (product: ProductItem) => {
-    setSelectedProducts(prev => {
-      const exists = prev.find(p => p.id === product.id);
-      if (exists) {
-        return prev.map(p => p.id === product.id ? { ...p, quantity: p.quantity + 1 } : p);
-      }
-      return [...prev, { ...product, quantity: 1 }];
-    });
-  };
-
-  const handleRemoveProduct = (id: string) => {
-    setSelectedProducts(prev => prev.filter(p => p.id !== id));
-  };
-
-  const handleQuantityChange = (id: string, delta: number) => {
-    setSelectedProducts(prev => prev.map(p => {
-      if (p.id === id) {
-        const newQty = Math.max(1, p.quantity + delta);
-        return { ...p, quantity: newQty };
-      }
-      return p;
-    }));
-  };
-
-  const handleCreatePack = async () => {
-    if (!packName.trim()) {
-      toast.error("Please enter a pack name");
-      return;
-    }
-    if (selectedProducts.length < 2) {
-      toast.error("Please add at least 2 products to create a pack");
-      return;
-    }
-
-    setIsSubmitting(true);
-    const fullName = `${packName.trim()} (${totalUnits} units)`;
-
+  const handleDeleteConfirm = async () => {
+    if (!packToDelete) return;
     try {
-      const res = await api.post('/packs', {
-        name: fullName,
-        description: description.trim() || undefined,
-        minimumPrice,
-        isActive,
-        items: selectedProducts.map(p => ({
-          productId: p.id,
-          quantity: p.quantity
-        }))
-      });
-
-      const created = res.data;
-      const formatted = {
-        id: created.id,
-        name: created.name,
-        description: created.description,
-        minimumPrice: created.minimumPrice,
-        totalUnits: created.items?.reduce((s: number, it: any) => s + (it.quantity || 1), 0) || totalUnits,
-        products: selectedProducts,
-        isActive: created.isActive,
-        createdAt: new Date(created.createdAt).toLocaleDateString()
-      };
-
-      setExistingPacks(prev => [formatted, ...prev]);
-      toast.success("Pack created successfully!");
-      setPackName('');
-      setDescription('');
-      setSelectedProducts([]);
+      setIsDeleting(true);
+      await api.delete(`/packs/${packToDelete.id}`);
+      toast.success('Pack deleted.');
+      setPacks(prev => prev.filter(p => p.id !== packToDelete.id));
+      setPackToDelete(null);
     } catch (err: any) {
-      // Local fallback in case user tests offline
-      const newPack = {
-        id: `pack-${Date.now()}`,
-        name: fullName,
-        description,
-        minimumPrice,
-        totalUnits,
-        products: selectedProducts,
-        isActive,
-        createdAt: new Date().toLocaleDateString()
-      };
-      setExistingPacks(prev => [newPack, ...prev]);
-      toast.success("Pack created successfully!");
-      setPackName('');
-      setDescription('');
-      setSelectedProducts([]);
+      console.error('Delete pack error:', err);
+      toast.error(err.response?.data?.message || 'Failed to delete pack');
     } finally {
-      setIsSubmitting(false);
+      setIsDeleting(false);
     }
   };
-
-  const filteredProducts = availableProducts.filter(p => 
-    p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    (p.sku && p.sku.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-300 font-[family-name:var(--font-geist-sans)] max-w-[1300px] mx-auto pb-12">
+    <div className="space-y-6 max-w-6xl mx-auto pb-12 font-[family-name:var(--font-geist-sans)]">
+      
       {/* Header */}
       <div>
-        <h1 className="text-[28px] font-bold tracking-tight text-slate-900">New Pack</h1>
-        <p className="text-slate-400 mt-1 text-[14px]">
-          Only your approved products can be added. Price is set per lead in Create Lead or import, not here.
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900">My Packs</h1>
+        <p className="text-sm text-slate-500 mt-1">
+          Bundle your approved products into a single sellable pack.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left Card: Pack Details */}
-        <Card className="lg:col-span-6 border-2 border-purple-200/80 shadow-sm rounded-3xl bg-white p-7 space-y-6">
-          <div className="space-y-2">
-            <label className="text-[13px] font-bold text-slate-900">Name</label>
-            <Input
-              value={packName}
-              onChange={(e) => setPackName(e.target.value)}
-              placeholder="Combo winter set"
-              className="h-11 rounded-xl border-slate-200 text-[14px] font-medium placeholder:text-slate-400 focus:border-[#7c3aed] focus:ring-[#7c3aed]"
-            />
-            <p className="text-[12px] text-slate-400">
-              Unit count is added automatically, e.g. &quot;{packName || 'Combo winter set'} ({totalUnits} units)&quot;.
-            </p>
+      {/* Action Banner */}
+      <Card className="p-4 md:p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3.5">
+          <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
+            <Boxes className="w-5 h-5" />
           </div>
-
-          <div className="space-y-2">
-            <label className="text-[13px] font-bold text-slate-900">Description (optional)</label>
-            <Textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="What's in this pack, why it's a good deal."
-              className="min-h-[110px] resize-none rounded-xl border-slate-200 text-[14px] font-medium placeholder:text-slate-400 focus:border-[#7c3aed] focus:ring-[#7c3aed]"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-[13px] font-bold text-slate-900">Minimum price</label>
-            <div className="h-11 rounded-xl border border-slate-100 bg-slate-50/80 px-4 flex items-center font-bold text-slate-700 text-[15px]">
-              {selectedProducts.length > 0 ? `${minimumPrice} DH` : '—'}
-            </div>
-            <p className="text-[12px] text-slate-400">
-              {selectedProducts.length > 0 ? 'Calculated minimum based on included products.' : 'Add products to see the minimum.'}
-            </p>
-          </div>
-
-          <div className="pt-2">
-            <label className="flex items-center gap-3 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={isActive}
-                onChange={(e) => setIsActive(e.target.checked)}
-                className="w-4 h-4 rounded text-[#6d28d9] focus:ring-[#6d28d9] border-slate-300 accent-[#6d28d9]"
-              />
-              <span className="text-[13px] font-semibold text-slate-800">
-                Active (usable in Create Lead and imports)
-              </span>
-            </label>
-          </div>
-        </Card>
-
-        {/* Right Card: Products in this pack */}
-        <Card className="lg:col-span-6 border border-slate-200/80 shadow-sm rounded-3xl bg-white p-7 space-y-5">
           <div>
-            <div className="flex items-center gap-2 mb-1">
-              <Boxes className="w-5 h-5 text-[#6d28d9]" />
-              <h2 className="text-[16px] font-bold text-slate-900">Products in this pack</h2>
-            </div>
-            {selectedProducts.length === 0 ? (
-              <p className="text-[13px] text-slate-400">
-                No products added yet. Search below to add at least 2.
-              </p>
-            ) : (
-              <p className="text-[13px] text-emerald-600 font-semibold">
-                {selectedProducts.length} product(s) selected ({totalUnits} total units)
-              </p>
-            )}
+            <h3 className="font-bold text-slate-900 text-sm">Your packs</h3>
+            <p className="text-xs text-slate-500">Only your approved products can go into a pack.</p>
           </div>
+        </div>
 
-          {/* Selected Products List (if any) */}
-          {selectedProducts.length > 0 && (
-            <div className="space-y-2 max-h-[180px] overflow-y-auto pr-1">
-              {selectedProducts.map((p) => (
-                <div key={p.id} className="flex items-center justify-between p-2.5 rounded-xl bg-purple-50/50 border border-purple-100">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-9 h-9 rounded-lg bg-white border border-slate-200 overflow-hidden shrink-0">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={p.imageUrl} alt="" className="w-full h-full object-cover" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-[13px] font-bold text-slate-900 truncate">{p.name}</p>
-                      <p className="text-[11px] text-slate-500 font-semibold">{p.adminCosts} DH / unit</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <div className="flex items-center border border-slate-200 rounded-lg bg-white">
-                      <button 
-                        onClick={() => handleQuantityChange(p.id, -1)}
-                        className="w-6 h-6 flex items-center justify-center text-slate-500 hover:text-slate-900 font-bold"
-                      >
-                        -
-                      </button>
-                      <span className="w-6 text-center text-xs font-bold text-slate-800">{p.quantity}</span>
-                      <button 
-                        onClick={() => handleQuantityChange(p.id, 1)}
-                        className="w-6 h-6 flex items-center justify-center text-slate-500 hover:text-slate-900 font-bold"
-                      >
-                        +
-                      </button>
-                    </div>
-                    <button
-                      onClick={() => handleRemoveProduct(p.id)}
-                      className="text-slate-400 hover:text-red-500 p-1"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+        <Link href="/seller/packs/new">
+          <Button className="w-full sm:w-auto bg-[#5b21b6] hover:bg-[#4c1d95] text-white font-semibold text-xs px-4 py-2 h-9 rounded-xl flex items-center justify-center gap-1.5 shadow-sm">
+            <Plus className="w-4 h-4" />
+            New Pack
+          </Button>
+        </Link>
+      </Card>
 
-          {/* Search approved products */}
-          <div className="relative">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <Input
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search your approved products..."
-              className="pl-10 h-11 rounded-xl bg-white border-slate-200 text-[13px] font-medium placeholder:text-slate-400"
-            />
+      {/* Main Table or Empty State */}
+      <Card className="rounded-2xl bg-white border border-slate-200/80 shadow-sm overflow-hidden">
+        {loading ? (
+          <div className="py-20 flex flex-col items-center justify-center text-slate-400 gap-2">
+            <Loader2 className="w-6 h-6 animate-spin text-purple-600" />
+            <span className="text-xs font-medium">Loading your packs...</span>
           </div>
-
-          {/* Approved Products List */}
-          {loadingProducts ? (
-            <div className="py-8 text-center text-xs text-slate-400">Loading your approved products...</div>
-          ) : filteredProducts.length === 0 ? (
-            <div className="py-8 text-center bg-slate-50/60 rounded-2xl border border-dashed border-slate-200 p-4">
-              <Package className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-              <p className="text-xs font-bold text-slate-700">No approved products found</p>
-              <p className="text-[11px] text-slate-400 mt-1 max-w-[240px] mx-auto">
-                Packs can only be created with products you have requested access to and that are approved.
-              </p>
-              <a href="/seller/marketplace" className="inline-block mt-3 text-xs font-bold text-[#6d28d9] hover:underline">
-                Request products in Marketplace &rarr;
-              </a>
+        ) : packs.length === 0 ? (
+          /* Empty State (Frame 10s) */
+          <div className="py-20 px-4 flex flex-col items-center justify-center text-center">
+            <div className="w-14 h-14 rounded-full bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-400 mb-4 shadow-inner">
+              <Boxes className="w-6 h-6 text-slate-300" />
             </div>
-          ) : (
-            <div className="divide-y divide-slate-100 max-h-[340px] overflow-y-auto pr-1">
-              {filteredProducts.map((product) => {
-                const isSelected = selectedProducts.some(p => p.id === product.id);
-                return (
-                  <div 
-                    key={product.id}
-                    className="py-3 flex items-center justify-between gap-3 group hover:bg-slate-50/50 rounded-xl px-2 transition-colors"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-10 h-10 rounded-xl bg-slate-100 border border-slate-200 overflow-hidden shrink-0">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={product.imageUrl} alt="" className="w-full h-full object-cover" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-[13px] font-bold text-slate-900 truncate leading-snug">
-                          {product.name}
-                        </p>
-                        <p className="text-[11px] text-slate-400 font-medium">
-                          Min. Price: {product.adminCosts} DH
-                        </p>
-                      </div>
-                    </div>
+            <h3 className="text-base font-bold text-slate-900 mb-1">No packs yet</h3>
+            <p className="text-xs text-slate-500 max-w-sm mb-6 leading-relaxed">
+              Bundle two or more of your approved products into a pack and sell it like a single product.
+            </p>
+            <Link href="/seller/packs/new">
+              <Button className="bg-[#5b21b6] hover:bg-[#4c1d95] text-white font-semibold text-xs px-5 py-2.5 h-10 rounded-xl flex items-center gap-2 shadow-sm">
+                <Plus className="w-4 h-4" />
+                Create your first pack
+              </Button>
+            </Link>
+          </div>
+        ) : (
+          /* Packs Table (Frame 05s, 25s) */
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-slate-50/70 border-b border-slate-100 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                <tr>
+                  <th className="py-3 px-6">NAME</th>
+                  <th className="py-3 px-6">SKU</th>
+                  <th className="py-3 px-6">PRODUCTS</th>
+                  <th className="py-3 px-6">MIN PRICE</th>
+                  <th className="py-3 px-6">STATUS</th>
+                  <th className="py-3 px-6 text-right">ACTIONS</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-slate-700">
+                {packs.map((pack) => {
+                  const sku = getPackSku(pack);
+                  const items = pack.items || [];
+                  const isActive = pack.isActive !== false;
 
-                    <button
-                      onClick={() => handleAddProduct(product)}
-                      className="w-8 h-8 rounded-lg flex items-center justify-center text-[#6d28d9] hover:bg-purple-100 hover:text-[#5b21b6] transition-colors shrink-0"
-                      title="Add to pack"
-                    >
-                      <Plus className="w-5 h-5 stroke-[2.5]" />
-                    </button>
-                  </div>
-                );
-              })}
+                  return (
+                    <tr key={pack.id} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="py-4 px-6 font-semibold text-slate-900 text-sm">
+                        {pack.name}
+                      </td>
+                      <td className="py-4 px-6 font-mono text-xs text-slate-400">
+                        {sku}
+                      </td>
+                      <td className="py-4 px-6">
+                        <div className="flex items-center">
+                          {items.slice(0, 4).map((it: any, idx: number) => {
+                            const img = it.product?.imageUrl || it.product?.image || 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=100';
+                            return (
+                              <img
+                                key={it.id || idx}
+                                src={img}
+                                alt={it.product?.name || 'Product'}
+                                title={`${it.product?.name || 'Product'} (×${it.quantity || 1})`}
+                                className="w-7 h-7 rounded-full border-2 border-white object-cover -ml-2 first:ml-0 bg-slate-100 shadow-sm"
+                                onError={(e) => {
+                                  (e.target as any).src = 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=100';
+                                }}
+                              />
+                            );
+                          })}
+                          {items.length > 4 && (
+                            <span className="w-7 h-7 rounded-full border-2 border-white bg-slate-100 text-slate-600 font-bold text-[10px] flex items-center justify-center -ml-2 shadow-sm">
+                              +{items.length - 4}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="py-4 px-6 font-bold text-slate-900 text-sm">
+                        {pack.minimumPrice} DH
+                      </td>
+                      <td className="py-4 px-6">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                          isActive 
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' 
+                            : 'bg-slate-100 text-slate-600'
+                        }`}>
+                          {isActive ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                      <td className="py-4 px-6 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => router.push(`/seller/packs/new?edit=${pack.id}`)}
+                            title="Edit pack"
+                            className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors border border-transparent hover:border-slate-200"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPackToDelete(pack)}
+                            title="Delete pack"
+                            className="w-8 h-8 rounded-lg flex items-center justify-center border border-red-200 text-red-500 hover:bg-red-50 hover:border-red-300 transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      {/* Delete Confirmation Modal (Frame 05s) */}
+      {packToDelete && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 relative animate-in zoom-in-95 duration-200">
+            <button
+              onClick={() => !isDeleting && setPackToDelete(null)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 text-red-600 mb-3">
+              <div className="w-9 h-9 rounded-full bg-red-50 flex items-center justify-center">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-900">Delete pack?</h3>
             </div>
-          )}
-        </Card>
-      </div>
 
-      {/* Action Buttons */}
-      <div className="flex items-center justify-end gap-3 pt-2">
-        <Button 
-          variant="outline" 
-          onClick={() => {
-            setPackName('');
-            setDescription('');
-            setSelectedProducts([]);
-          }}
-          className="rounded-xl border-slate-200 text-slate-700 hover:bg-slate-50 px-5 h-11 font-semibold"
-        >
-          Cancel
-        </Button>
-        <Button 
-          onClick={handleCreatePack}
-          className="bg-[#6d28d9] hover:bg-[#5b21b6] text-white rounded-xl px-7 h-11 font-bold shadow-md transition-all"
-        >
-          Create Pack
-        </Button>
-      </div>
+            <p className="text-sm text-slate-600 mb-6 leading-relaxed">
+              &quot;{packToDelete.name}&quot; will be permanently removed. This cannot be undone.
+            </p>
 
-      {/* Existing Packs (if any) */}
-      {existingPacks.length > 0 && (
-        <div className="mt-10 pt-8 border-t border-slate-200">
-          <h2 className="text-xl font-bold text-slate-900 mb-4">Your Created Packs</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {existingPacks.map(pack => (
-              <Card key={pack.id} className="p-5 rounded-2xl border border-slate-100 shadow-sm bg-white">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="font-bold text-slate-900">{pack.name}</h3>
-                  <span className="text-xs font-bold text-purple-600 bg-purple-50 px-2.5 py-1 rounded-full">
-                    {pack.minimumPrice} DH
-                  </span>
-                </div>
-                <p className="text-xs text-slate-500 mb-3 line-clamp-2">{pack.description || 'No description'}</p>
-                <div className="text-[11px] font-medium text-slate-400">
-                  {pack.totalUnits} items in bundle • Created {pack.createdAt}
-                </div>
-              </Card>
-            ))}
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setPackToDelete(null)}
+                disabled={isDeleting}
+                className="rounded-xl h-10 px-5 text-sm font-semibold border-slate-200 text-slate-600 hover:bg-slate-50"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={handleDeleteConfirm}
+                disabled={isDeleting}
+                className="rounded-xl h-10 px-5 text-sm font-semibold bg-red-600 hover:bg-red-700 text-white flex items-center gap-1.5 shadow-sm shadow-red-200"
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    Delete
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         </div>
       )}
+
     </div>
   );
 }

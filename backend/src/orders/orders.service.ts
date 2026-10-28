@@ -15,27 +15,69 @@ export class OrdersService {
     const seller = await this.prisma.seller.findUnique({ where: { userId } });
     if (!seller) throw new NotFoundException('Seller profile not found');
 
-    const offer = await this.prisma.sellerProductOffer.findUnique({
-      where: {
-        sellerId_productId: {
-          sellerId: seller.id,
-          productId: dto.productId
-        }
-      }
-    });
+    let finalProductId = dto.productId;
+    let minAllowedPrice = 0;
 
-    if (!offer || offer.approvedStatus !== 'APPROVED') {
-      throw new BadRequestException('You are not approved to sell this product.');
+    if (dto.productId && dto.productId.startsWith('pack:')) {
+      const packId = dto.productId.replace('pack:', '');
+      const packRecord = await this.prisma.pack.findUnique({
+        where: { id: packId },
+        include: { items: { include: { product: true } } }
+      });
+      if (!packRecord || packRecord.sellerId !== seller.id) {
+        throw new BadRequestException('Pack not found or does not belong to your store');
+      }
+      if (!packRecord.items || packRecord.items.length === 0) {
+        throw new BadRequestException('This pack has no products');
+      }
+      finalProductId = packRecord.items[0].productId;
+      minAllowedPrice = packRecord.minimumPrice;
+
+      let hash = 0;
+      for (let j = 0; j < packRecord.id.length; j++) {
+        hash = (hash << 5) - hash + packRecord.id.charCodeAt(j);
+        hash |= 0;
+      }
+      const packSku = `PACK-${Math.abs(hash % 90000) + 10000}`;
+
+      dto.customerInfo = {
+        ...dto.customerInfo,
+        isPack: true,
+        packId: packRecord.id,
+        packName: packRecord.name,
+        packSku,
+        packItems: packRecord.items.map((it: any) => ({
+          productId: it.productId,
+          productName: it.product?.name,
+          productSku: it.product?.sku,
+          productImage: it.product?.imageUrl || it.product?.image,
+          quantity: it.quantity
+        }))
+      };
+    } else {
+      const offer = await this.prisma.sellerProductOffer.findUnique({
+        where: {
+          sellerId_productId: {
+            sellerId: seller.id,
+            productId: dto.productId
+          }
+        }
+      });
+
+      if (!offer || offer.approvedStatus !== 'APPROVED') {
+        throw new BadRequestException('You are not approved to sell this product.');
+      }
+      minAllowedPrice = offer.minimumPrice;
     }
 
-    if (dto.totalPrice < offer.minimumPrice) {
-      throw new BadRequestException(`Total price must be at least ${offer.minimumPrice}`);
+    if (dto.totalPrice < minAllowedPrice) {
+      throw new BadRequestException(`Total price must be at least ${minAllowedPrice} DH`);
     }
 
     return this.prisma.order.create({
       data: {
         sellerId: seller.id,
-        productId: dto.productId,
+        productId: finalProductId,
         customerInfo: dto.customerInfo,
         totalPrice: dto.totalPrice,
         status: OrderStatus.NEW,
@@ -59,27 +101,95 @@ export class OrdersService {
       if (p.name) productNameMap.set(p.name.toLowerCase().trim(), p);
     }
 
+    const sellerPacks = await this.prisma.pack.findMany({
+      where: { sellerId: seller.id },
+      include: { items: { include: { product: true } } }
+    });
+
+    const packSkuMap = new Map<string, any>();
+    for (const pk of sellerPacks) {
+      let hash = 0;
+      for (let j = 0; j < pk.id.length; j++) {
+        hash = (hash << 5) - hash + pk.id.charCodeAt(j);
+        hash |= 0;
+      }
+      const pkSku = `PACK-${Math.abs(hash % 90000) + 10000}`;
+      packSkuMap.set(pkSku.toLowerCase(), { ...pk, computedSku: pkSku });
+      packSkuMap.set(pk.name.toLowerCase().trim(), { ...pk, computedSku: pkSku });
+      packSkuMap.set(pk.id.toLowerCase(), { ...pk, computedSku: pkSku });
+    }
+
     const createdOrders: any[] = [];
     const errors: any[] = [];
 
     for (let i = 0; i < leads.length; i++) {
       const row = leads[i];
-      const rawSku = String(row.sku || row.productSku || row['Product SKU'] || '').trim();
-      const customer = String(row.customerName || row.customer || row.name || row['Customer Name'] || '').trim();
+      const rawSku = String(row.sku || row.productSku || row['Product SKU'] || row['SKU'] || '').trim();
+      const customer = String(row.customerName || row.customer || row.name || row['Customer Name'] || row['Customer'] || '').trim();
       const phone = String(row.phone || row.phoneNumber || row['Phone Number'] || '').trim();
       const city = String(row.city || row['City'] || 'Casablanca').trim();
-      const address = String(row.address || row.fullAddress || row['Full Address'] || '').trim();
+      const address = String(row.address || row.fullAddress || row['Full Address'] || row['Address'] || '').trim();
       const rawPriceStr = String(row.price ?? row['Price'] ?? '').replace(/[^\d.]/g, '');
       const price = parseFloat(rawPriceStr) || 0;
-      const quantity = parseInt(String(row.quantity ?? row['Quantity'] ?? '1').replace(/[^\d]/g, ''), 10) || 1;
-      const notes = String(row.notes || row.note || row['Notes'] || '').trim();
+      const quantity = parseInt(String(row.quantity ?? row['Quantity'] ?? row['Qty'] ?? '1').replace(/[^\d]/g, ''), 10) || 1;
+      const notes = String(row.notes || row.note || row['Notes'] || row['Note'] || '').trim();
 
       if (!customer || !phone) {
         errors.push({ row: i + 1, error: 'Customer name or phone is missing' });
         continue;
       }
 
-      // Match product by SKU or name
+      // Check if SKU matches a Pack
+      const matchedPack = packSkuMap.get(rawSku.toLowerCase()) || 
+        (row.productId && row.productId.startsWith('pack:') ? packSkuMap.get(row.productId.replace('pack:', '').toLowerCase()) : null);
+
+      if (matchedPack) {
+        if (!matchedPack.items || matchedPack.items.length === 0) {
+          errors.push({ row: i + 1, error: `Pack '${matchedPack.name}' has no products inside.` });
+          continue;
+        }
+
+        const packMinPrice = matchedPack.minimumPrice;
+        const totalOrderPrice = price > 0 ? price : packMinPrice;
+
+        if (totalOrderPrice < packMinPrice) {
+          errors.push({ row: i + 1, error: `Price (${totalOrderPrice} DH) is below pack minimum (${packMinPrice} DH)` });
+          continue;
+        }
+
+        const order = await this.prisma.order.create({
+          data: {
+            sellerId: seller.id,
+            productId: matchedPack.items[0].productId,
+            totalPrice: totalOrderPrice,
+            customerInfo: {
+              name: customer,
+              phone,
+              city: city || 'Casablanca',
+              address: address || '',
+              notes: notes || '',
+              quantity: 1,
+              isPack: true,
+              packId: matchedPack.id,
+              packName: matchedPack.name,
+              packSku: matchedPack.computedSku,
+              packItems: matchedPack.items.map((it: any) => ({
+                productId: it.productId,
+                productName: it.product?.name,
+                productSku: it.product?.sku,
+                productImage: it.product?.imageUrl || it.product?.image,
+                quantity: it.quantity
+              })),
+              source: 'CSV_IMPORT'
+            },
+            status: OrderStatus.NEW,
+          }
+        });
+        createdOrders.push(order);
+        continue;
+      }
+
+      // Otherwise match product by SKU or name
       let product = productSkuMap.get(rawSku.toLowerCase()) || productNameMap.get(rawSku.toLowerCase());
       if (!product && rawSku) {
         product = products.find(p => 

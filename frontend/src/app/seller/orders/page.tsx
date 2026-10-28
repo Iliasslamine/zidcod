@@ -406,12 +406,26 @@ export default function SellerOrdersPage() {
                         )}
                       </td>
                       <td className="px-6 py-4">
-                        <div className="font-medium text-slate-700 text-[14px] line-clamp-1 max-w-[260px]">
-                          {order.product?.name || 'Unknown Product'}
-                        </div>
+                        {customer.isPack ? (
+                          <div>
+                            <div className="flex items-center gap-1.5 font-bold text-purple-900 text-[14px] line-clamp-1 max-w-[260px]">
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-purple-100 text-purple-700 uppercase tracking-wider">
+                                Pack
+                              </span>
+                              <span>{customer.packName || 'Pack Bundle'}</span>
+                            </div>
+                            <div className="text-[11px] text-slate-400 font-mono mt-0.5">
+                              {customer.packSku || 'PACK'} • {(customer.packItems || []).length} items
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="font-medium text-slate-700 text-[14px] line-clamp-1 max-w-[260px]">
+                            {order.product?.name || 'Unknown Product'}
+                          </div>
+                        )}
                         <div className="text-[12px] font-semibold text-slate-900 mt-0.5">
                           {price} DH
-                          {customer.quantity && customer.quantity > 1 && (
+                          {customer.quantity && customer.quantity > 1 && !customer.isPack && (
                             <span className="text-slate-400 font-normal ml-1.5">× {customer.quantity}</span>
                           )}
                         </div>
@@ -508,22 +522,53 @@ export default function SellerOrdersPage() {
               {/* Product Section */}
               <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
                 <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1.5">
-                  <ShoppingBag className="w-3.5 h-3.5 text-purple-600" /> Product Information
+                  <ShoppingBag className="w-3.5 h-3.5 text-purple-600" /> 
+                  {selectedOrder.customerInfo?.isPack ? 'Pack Bundle Information' : 'Product Information'}
                 </div>
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h4 className="font-bold text-slate-900 text-sm">{selectedOrder.product?.name || 'Unknown Product'}</h4>
-                    <p className="text-xs text-slate-500 font-mono mt-0.5">SKU: {selectedOrder.product?.sku || 'N/A'}</p>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-base font-black text-slate-900">
-                      {selectedOrder.totalPrice ?? selectedOrder.price ?? 0} DH
+
+                {selectedOrder.customerInfo?.isPack ? (
+                  <div className="space-y-3">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="px-1.5 py-0.5 text-[10px] font-extrabold rounded bg-purple-100 text-purple-700 uppercase">Pack</span>
+                          <h4 className="font-bold text-slate-900 text-sm">{selectedOrder.customerInfo.packName}</h4>
+                        </div>
+                        <p className="text-xs text-slate-500 font-mono mt-0.5">SKU: {selectedOrder.customerInfo.packSku || 'PACK'}</p>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-base font-black text-slate-900">
+                          {selectedOrder.totalPrice ?? selectedOrder.price ?? 0} DH
+                        </div>
+                      </div>
                     </div>
-                    <span className="text-xs text-slate-400 font-medium">
-                      Qty: {selectedOrder.customerInfo?.quantity || selectedOrder.customerInfo?.qty || 1}
-                    </span>
+                    {/* Items inside pack */}
+                    <div className="pt-2 border-t border-slate-200/60 space-y-1.5">
+                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Pack Contents:</span>
+                      {(selectedOrder.customerInfo.packItems || []).map((it: any, idx: number) => (
+                        <div key={idx} className="flex items-center justify-between text-xs text-slate-700 bg-white p-2 rounded-lg border border-slate-200/50">
+                          <span className="font-medium">{it.productName || 'Product item'}</span>
+                          <span className="font-mono text-purple-700 font-bold">× {it.quantity || 1}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h4 className="font-bold text-slate-900 text-sm">{selectedOrder.product?.name || 'Unknown Product'}</h4>
+                      <p className="text-xs text-slate-500 font-mono mt-0.5">SKU: {selectedOrder.product?.sku || 'N/A'}</p>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-base font-black text-slate-900">
+                        {selectedOrder.totalPrice ?? selectedOrder.price ?? 0} DH
+                      </div>
+                      <span className="text-xs text-slate-400 font-medium">
+                        Qty: {selectedOrder.customerInfo?.quantity || selectedOrder.customerInfo?.qty || 1}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Customer Section */}

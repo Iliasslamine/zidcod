@@ -7,27 +7,28 @@ export class PacksService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(userId: string, dto: CreatePackDto) {
-    let seller = await this.prisma.seller.findUnique({
+    const seller = await this.prisma.seller.findUnique({
       where: { userId },
     });
 
     if (!seller) {
-      seller = await this.prisma.seller.findFirst();
-      if (!seller) {
-        throw new NotFoundException('No seller found to associate this pack with');
-      }
+      throw new NotFoundException('Seller profile not found');
     }
 
-    const productIds = dto.items.map((it) => it.productId);
+    if (!dto.items || dto.items.length === 0) {
+      throw new BadRequestException('At least one product item is required to create a pack.');
+    }
+
+    const uniqueProductIds = Array.from(new Set(dto.items.map((it) => it.productId)));
     const approvedOffers = await this.prisma.sellerProductOffer.findMany({
       where: {
         sellerId: seller.id,
-        productId: { in: productIds },
+        productId: { in: uniqueProductIds },
         approvedStatus: 'APPROVED',
       },
     });
 
-    if (approvedOffers.length < productIds.length) {
+    if (approvedOffers.length < uniqueProductIds.length) {
       throw new BadRequestException('Packs can only be created using products approved for your seller account.');
     }
 

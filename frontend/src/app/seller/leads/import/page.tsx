@@ -14,10 +14,13 @@ import {
   Download, 
   X, 
   FileText, 
-  AlertTriangle 
+  AlertTriangle,
+  Upload,
+  Boxes
 } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '@/lib/api';
+import { getPackSku } from '@/lib/pack-utils';
 
 interface ParsedLead {
   id: number;
@@ -29,6 +32,8 @@ interface ParsedLead {
   price: number;
   quantity: number;
   notes: string;
+  isPack?: boolean;
+  packName?: string;
   isValid: boolean;
   errors: string[];
 }
@@ -42,38 +47,40 @@ export default function ImportLeadsPage() {
   const [parsedLeads, setParsedLeads] = useState<ParsedLead[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [productsCatalog, setProductsCatalog] = useState<any[]>([]);
+  const [packsCatalog, setPacksCatalog] = useState<any[]>([]);
 
-  // Fetch products catalog to help resolve and validate SKUs
+  // Fetch products and packs catalog to validate SKUs
   useEffect(() => {
-    api.get('/products')
-      .then(res => {
-        if (Array.isArray(res.data)) {
-          setProductsCatalog(res.data);
-        }
-      })
-      .catch(err => {
-        console.error('Failed to load products catalog:', err);
-      });
+    Promise.all([
+      api.get('/products/my').catch(() => ({ data: [] })),
+      api.get('/packs').catch(() => ({ data: [] }))
+    ]).then(([prodRes, packRes]) => {
+      if (Array.isArray(prodRes.data)) {
+        setProductsCatalog(prodRes.data);
+      }
+      if (Array.isArray(packRes.data)) {
+        setPacksCatalog(packRes.data);
+      }
+    });
   }, []);
 
-  // 1. Download CSV Template (Aligned with zidcod_orders_template)
+  // Download CSV Template (Frame 53s format)
   const handleDownloadTemplate = () => {
     const headers = [
-      'Product SKU',
-      'Customer Name',
-      'Phone Number',
+      'Customer',
+      'Phone',
       'City',
-      'Full Address',
+      'Address',
       'Price',
-      'Quantity',
-      'Notes',
-      'Sync Status'
+      'Qty',
+      'SKU',
+      'Note'
     ];
 
     const sampleRows = [
-      ['NutriKids-1', 'Fatima Zahra', '+212612345678', 'Casablanca', 'Hay Riad Rue 14 Imm 3', '199 DH', '1', 'Appeler après 14h', ''],
-      ['DOLI-1', 'Youssef Benali', '+212698765432', 'Rabat', 'Avenue Mohammed V N 45', '249 DH', '1', 'Livraison urgente', ''],
-      ['DOLI-2', 'Youssef Benali', '+212698765433', 'Rabat', 'Avenue Mohammed V N 46', '249 DH', '1', 'Livraison urgente', '']
+      ['Ahmed Benali', '0600000000', 'Casablanca', '103 Rue Mers Sultan', '123', '1', 'PACK-87906', 'Customer prefers delivery in the evening'],
+      ['Fatima Zahra', '0612345678', 'Rabat', 'Hay Riad Rue 14 Imm 3', '199', '1', 'PROD-VANTOR', 'Appeler avant midi'],
+      ['Youssef Alami', '0698765432', 'Marrakech', 'Gueliz Bd Mohammed V', '249', '2', 'PROD-BLOOMY', 'Livraison urgente']
     ];
 
     const csvContent = [
@@ -175,14 +182,13 @@ export default function ImportLeadsPage() {
           return;
         }
 
-        // Validate required headers
         const normalizedHeaders = headers.map(h => h.toLowerCase().replace(/[^a-z0-9]/g, ''));
-        const hasSku = normalizedHeaders.some(h => h.includes('sku') || h.includes('product') || h.includes('item'));
+        const hasSku = normalizedHeaders.some(h => h.includes('sku') || h.includes('product') || h.includes('pack') || h.includes('item'));
         const hasName = normalizedHeaders.some(h => h.includes('name') || h.includes('client') || h.includes('customer') || h.includes('nom'));
         const hasPhone = normalizedHeaders.some(h => h.includes('phone') || h.includes('tel') || h.includes('mobile'));
 
         if (!hasSku || !hasName || !hasPhone) {
-          toast.error('Missing required columns! Your CSV must include: Product SKU, Customer Name, and Phone Number.');
+          toast.error('Missing required columns! Your CSV must include: Customer, Phone, and SKU.');
           return;
         }
 
@@ -192,14 +198,14 @@ export default function ImportLeadsPage() {
         }
 
         const parsed: ParsedLead[] = rows.map((row, idx) => {
-          const sku = getField(row, ['product sku', 'sku', 'productsku', 'item sku', 'code']);
-          const customerName = getField(row, ['customer name', 'customer', 'name', 'nom', 'client', 'full name']);
-          const phone = getField(row, ['phone number', 'phone', 'telephone', 'tel', 'mobile', 'whatsapp']);
+          const sku = getField(row, ['sku', 'product sku', 'pack sku', 'item sku', 'code']);
+          const customerName = getField(row, ['customer', 'customer name', 'name', 'nom', 'client', 'full name']);
+          const phone = getField(row, ['phone', 'phone number', 'telephone', 'tel', 'mobile', 'whatsapp']);
           const city = getField(row, ['city', 'ville', 'destination']) || 'Casablanca';
-          const address = getField(row, ['full address', 'address', 'adresse', 'street', 'rue']);
+          const address = getField(row, ['address', 'full address', 'adresse', 'street', 'rue']);
           const rawPrice = getField(row, ['price', 'prix', 'total price', 'amount']);
-          const rawQty = getField(row, ['quantity', 'qty', 'quantite', 'qte']);
-          const notes = getField(row, ['notes', 'note', 'remarque', 'comment', 'instruction']);
+          const rawQty = getField(row, ['qty', 'quantity', 'quantite', 'qte']);
+          const notes = getField(row, ['note', 'notes', 'remarque', 'comment', 'instruction']);
 
           const errors: string[] = [];
           if (!customerName) errors.push('Missing Name');
@@ -211,6 +217,24 @@ export default function ImportLeadsPage() {
           const cleanQty = String(rawQty || '1').replace(/[^\d]/g, '');
           const quantity = parseInt(cleanQty, 10) || 1;
 
+          // Check if SKU matches pack or product
+          let isPack = false;
+          let matchedPack: any = null;
+          if (sku) {
+            const rawSkuLower = sku.toLowerCase().trim();
+            matchedPack = packsCatalog.find(pk => {
+              const pSku = getPackSku(pk).toLowerCase();
+              return pSku === rawSkuLower || pk.id.toLowerCase() === rawSkuLower || pk.name.toLowerCase().trim() === rawSkuLower;
+            });
+
+            if (matchedPack) {
+              isPack = true;
+              if (price > 0 && price < matchedPack.minimumPrice) {
+                errors.push(`Price is below pack minimum (${matchedPack.minimumPrice} DH)`);
+              }
+            }
+          }
+
           return {
             id: idx + 1,
             sku,
@@ -218,9 +242,11 @@ export default function ImportLeadsPage() {
             phone,
             city,
             address,
-            price,
-            quantity: quantity > 0 ? quantity : 1,
+            price: price > 0 ? price : (matchedPack?.minimumPrice || 0),
+            quantity: isPack ? 1 : (quantity > 0 ? quantity : 1),
             notes,
+            isPack,
+            packName: matchedPack?.name,
             isValid: errors.length === 0,
             errors
           };
@@ -265,30 +291,27 @@ export default function ImportLeadsPage() {
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) {
-      processCSVFile(file);
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      processCSVFile(files[0]);
     }
   };
 
   const handleReset = () => {
     setSelectedFile(null);
     setParsedLeads([]);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // Submit bulk leads to API
   const handleConfirmImport = async () => {
     const validLeads = parsedLeads.filter(l => l.isValid);
     if (validLeads.length === 0) {
-      toast.error('No valid leads to import. Please check missing fields in your CSV.');
+      toast.error('No valid leads to import. Please check for errors.');
       return;
     }
 
-    setIsSubmitting(true);
     try {
+      setIsSubmitting(true);
       const payload = validLeads.map(l => ({
         sku: l.sku,
         customerName: l.customerName,
@@ -307,7 +330,7 @@ export default function ImportLeadsPage() {
         toast.success(`Successfully imported ${res.data.count || validLeads.length} leads!`);
         setTimeout(() => {
           router.push('/seller/orders');
-        }, 1200);
+        }, 1000);
       } else {
         toast.error(res.data?.message || 'Failed to import leads');
       }
@@ -323,13 +346,13 @@ export default function ImportLeadsPage() {
   const invalidCount = parsedLeads.length - validCount;
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500 font-[family-name:var(--font-geist-sans)] max-w-[1000px] mx-auto pb-12">
+    <div className="space-y-6 max-w-5xl mx-auto pb-16 font-[family-name:var(--font-geist-sans)]">
       
-      {/* Header */}
-      <div className="text-center mb-8 pt-4">
-        <h1 className="text-[28px] font-bold tracking-tight text-slate-900">Import Leads</h1>
-        <p className="text-slate-500 mt-2 text-[15px] max-w-lg mx-auto">
-          Upload a CSV file to bulk import your customer orders directly into the fulfillment pipeline.
+      {/* Page Header (Frame 53s) */}
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900">Import Leads</h1>
+        <p className="text-xs text-slate-500 mt-1">
+          Bulk create leads from a spreadsheet (CSV or Excel).
         </p>
       </div>
 
@@ -342,56 +365,78 @@ export default function ImportLeadsPage() {
         className="hidden" 
       />
 
-      {/* If No File Loaded: Show Upload Dropzone */}
+      {/* Upload Dropzone (Frame 53s) */}
       {parsedLeads.length === 0 ? (
-        <Card 
-          onDragOver={handleDragOver}
-          onDragEnter={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-          onClick={() => fileInputRef.current?.click()}
-          className={`border-2 border-dashed shadow-sm rounded-3xl p-12 text-center transition-all cursor-pointer group ${
-            isDragging 
-              ? 'border-[#5E2AE2] bg-purple-50/50 scale-[1.01]' 
-              : 'border-slate-200 bg-slate-50/50 hover:bg-slate-50 hover:border-slate-300'
-          }`}
-        >
-          <div className="w-20 h-20 bg-white shadow-sm rounded-full flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform">
-            <UploadCloud className={`w-10 h-10 ${isDragging ? 'text-[#5E2AE2]' : 'text-purple-600'}`} />
-          </div>
-          <h3 className="text-lg font-bold text-slate-900 mb-2">
-            {isDragging ? 'Drop your CSV file here' : 'Click to upload or drag and drop'}
-          </h3>
-          <p className="text-sm text-slate-500 mb-8 max-w-sm mx-auto">
-            Upload your CSV file with leads data. Standard UTF-8 encoded files supported.
-          </p>
-          
-          <Button 
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              fileInputRef.current?.click();
-            }}
-            className="bg-white border border-slate-200 text-slate-800 hover:bg-slate-100 hover:text-slate-900 shadow-sm font-semibold h-11 px-8 rounded-xl"
+        <div className="space-y-5">
+          <Card 
+            onDragOver={handleDragOver}
+            onDragEnter={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            onClick={() => fileInputRef.current?.click()}
+            className={`border-2 border-dashed rounded-3xl p-12 text-center transition-all cursor-pointer group bg-white ${
+              isDragging 
+                ? 'border-[#6d28d9] bg-purple-50/40 scale-[1.01]' 
+                : 'border-slate-200 hover:border-purple-300'
+            }`}
           >
-            Browse Files
-          </Button>
-        </Card>
+            <div className="w-16 h-16 bg-purple-50 text-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4 group-hover:scale-105 transition-transform">
+              <Upload className="w-8 h-8" />
+            </div>
+            <h3 className="text-sm font-bold text-slate-900 mb-1">
+              Drop your file here, or click to browse
+            </h3>
+            <p className="text-xs text-slate-400">
+              CSV or Excel (.xlsx) — max a few thousand rows
+            </p>
+          </Card>
+
+          {/* Column Format Card (Frame 53s) */}
+          <Card className="border border-slate-200/80 shadow-sm rounded-2xl bg-white p-5 space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-slate-900 text-sm">Column format</h3>
+              <button
+                type="button"
+                onClick={handleDownloadTemplate}
+                className="text-xs font-semibold text-purple-600 hover:text-purple-700 flex items-center gap-1.5"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Download template
+              </button>
+            </div>
+
+            {/* Pills */}
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-700">Customer</span>
+              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-700">Phone</span>
+              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600">City</span>
+              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600">Address</span>
+              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600">Price</span>
+              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600">Qty</span>
+              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-700">SKU</span>
+              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600">Note</span>
+            </div>
+
+            <p className="text-[11px] text-slate-500 leading-relaxed pt-1">
+              <span className="font-bold text-purple-700">Blue</span> = required. All other columns are optional. <strong className="text-slate-800">SKU</strong> must match a product you&apos;re approved for, or one of your packs. <strong className="text-slate-800">Price</strong> is the unit selling price (for a pack row, this is the total price for the whole pack, must cover its minimum).
+            </p>
+          </Card>
+        </div>
       ) : (
-        /* If File Loaded: Show Preview Table & Controls */
+        /* Preview Table & Confirm */
         <div className="space-y-6">
-          <Card className="border border-slate-100 shadow-sm rounded-2xl bg-white p-6">
+          <Card className="border border-slate-200/80 shadow-sm rounded-2xl bg-white p-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
               <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-xl bg-purple-50 flex items-center justify-center text-[#5E2AE2]">
+                <div className="w-10 h-10 rounded-xl bg-purple-50 flex items-center justify-center text-purple-600">
                   <FileText className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
+                  <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
                     {selectedFile?.name || 'Uploaded File'}
                   </h3>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    {selectedFile ? `${(selectedFile.size / 1024).toFixed(1)} KB • ` : ''}{parsedLeads.length} leads detected
+                    {parsedLeads.length} leads detected
                   </p>
                 </div>
               </div>
@@ -417,7 +462,7 @@ export default function ImportLeadsPage() {
                     <th className="py-3 px-3.5">Customer Name</th>
                     <th className="py-3 px-3.5">Phone Number</th>
                     <th className="py-3 px-3.5">City</th>
-                    <th className="py-3 px-3.5">Product SKU</th>
+                    <th className="py-3 px-3.5">SKU / Item</th>
                     <th className="py-3 px-3.5 text-right">Price (DH)</th>
                     <th className="py-3 px-3.5 text-center">Qty</th>
                     <th className="py-3 px-3.5">Notes</th>
@@ -428,36 +473,30 @@ export default function ImportLeadsPage() {
                   {parsedLeads.map((lead) => {
                     return (
                       <tr key={lead.id} className="hover:bg-slate-50/50 transition-colors">
-                        <td className="py-2.5 px-3.5 text-center text-slate-400 font-mono">{lead.id}</td>
-                        <td className="py-2.5 px-3.5 font-semibold text-slate-800">
-                          {lead.customerName || <span className="text-red-500 italic">Missing</span>}
-                        </td>
-                        <td className="py-2.5 px-3.5 font-mono text-slate-600">
-                          {lead.phone || <span className="text-red-500 italic">Missing</span>}
-                        </td>
-                        <td className="py-2.5 px-3.5 text-slate-600">
-                          {lead.city}
-                        </td>
-                        <td className="py-2.5 px-3.5 font-mono text-purple-700 font-semibold">
-                          {lead.sku || <span className="text-red-500 italic">Missing</span>}
-                        </td>
-                        <td className="py-2.5 px-3.5 text-right font-semibold text-slate-900">
-                          {lead.price > 0 ? `${lead.price} DH` : 'Catalog Default'}
-                        </td>
-                        <td className="py-2.5 px-3.5 text-center text-slate-700 font-medium">
-                          {lead.quantity}
-                        </td>
-                        <td className="py-2.5 px-3.5 text-slate-400 max-w-[150px] truncate" title={lead.notes}>
-                          {lead.notes || '—'}
-                        </td>
-                        <td className="py-2.5 px-3.5 text-center">
-                          {lead.isValid ? (
-                            <span className="inline-flex items-center text-emerald-600 font-medium">
-                              <CheckCircle2 className="w-4 h-4 mr-1" /> Valid
+                        <td className="py-3 px-3.5 text-slate-400 text-center font-mono">{lead.id}</td>
+                        <td className="py-3 px-3.5 font-bold text-slate-800">{lead.customerName}</td>
+                        <td className="py-3 px-3.5 font-mono text-slate-600">{lead.phone}</td>
+                        <td className="py-3 px-3.5 text-slate-600">{lead.city}</td>
+                        <td className="py-3 px-3.5">
+                          {lead.isPack ? (
+                            <span className="inline-flex items-center gap-1 font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-md font-mono">
+                              <Boxes className="w-3 h-3" /> {lead.sku} (Pack)
                             </span>
                           ) : (
-                            <span className="inline-flex items-center text-red-500 font-medium" title={lead.errors.join(', ')}>
-                              <AlertCircle className="w-4 h-4 mr-1" /> Fix
+                            <span className="font-mono text-slate-700">{lead.sku}</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-3.5 text-right font-bold text-slate-900">{lead.price} DH</td>
+                        <td className="py-3 px-3.5 text-center font-mono">{lead.quantity}</td>
+                        <td className="py-3 px-3.5 text-slate-500 truncate max-w-[150px]">{lead.notes || '—'}</td>
+                        <td className="py-3 px-3.5 text-center">
+                          {lead.isValid ? (
+                            <span className="inline-flex items-center text-emerald-600 font-semibold">
+                              <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Valid
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center text-red-500 font-semibold" title={lead.errors.join(', ')}>
+                              <AlertCircle className="w-3.5 h-3.5 mr-1" /> Fix
                             </span>
                           )}
                         </td>
@@ -475,7 +514,7 @@ export default function ImportLeadsPage() {
                 variant="outline"
                 onClick={handleReset}
                 disabled={isSubmitting}
-                className="w-full sm:w-auto border-slate-200 text-slate-600 hover:bg-slate-50 font-semibold rounded-xl h-11 px-6"
+                className="w-full sm:w-auto border-slate-200 text-slate-600 hover:bg-slate-50 font-semibold rounded-xl h-10 px-5 text-xs"
               >
                 Cancel / Choose Another File
               </Button>
@@ -484,7 +523,7 @@ export default function ImportLeadsPage() {
                 type="button"
                 onClick={handleConfirmImport}
                 disabled={isSubmitting || validCount === 0}
-                className="w-full sm:w-auto bg-[#5E2AE2] hover:bg-[#4d22ba] text-white font-bold rounded-xl h-11 px-8 shadow-sm flex items-center justify-center gap-2"
+                className="w-full sm:w-auto bg-[#6d28d9] hover:bg-[#5b21b6] text-white font-bold rounded-xl h-10 px-6 text-xs shadow-sm flex items-center justify-center gap-2"
               >
                 {isSubmitting ? (
                   <>
@@ -494,7 +533,7 @@ export default function ImportLeadsPage() {
                 ) : (
                   <>
                     Confirm & Import ({validCount} Leads)
-                    <ArrowRight className="w-4 h-4" />
+                    <ArrowRight className="w-3.5 h-3.5" />
                   </>
                 )}
               </Button>
@@ -502,63 +541,6 @@ export default function ImportLeadsPage() {
           </Card>
         </div>
       )}
-
-      {/* Rules & Template Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
-        
-        {/* Template Card */}
-        <Card className="border border-slate-100 shadow-sm rounded-2xl bg-white p-6">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="bg-emerald-50 p-2.5 rounded-xl text-emerald-600">
-              <FileSpreadsheet className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="font-bold text-slate-900 text-base">Download Template</h3>
-              <p className="text-xs text-slate-400">Standard CSV format with sample data</p>
-            </div>
-          </div>
-          <p className="text-sm text-slate-500 mb-6 leading-relaxed">
-            Download our pre-formatted CSV template with Moroccan COD sample rows to ensure your file uploads without errors.
-          </p>
-          <Button 
-            type="button"
-            variant="outline" 
-            onClick={handleDownloadTemplate}
-            className="w-full text-[#5E2AE2] border-purple-100 hover:bg-purple-50 font-bold rounded-xl h-11 flex items-center justify-center gap-2 shadow-sm"
-          >
-            <Download className="w-4 h-4" />
-            Download CSV Template
-          </Button>
-        </Card>
-
-        {/* Rules Card */}
-        <Card className="border border-slate-100 shadow-sm rounded-2xl bg-white p-6">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="bg-amber-50 p-2.5 rounded-xl text-amber-600">
-              <AlertCircle className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="font-bold text-slate-900 text-base">Import Rules</h3>
-              <p className="text-xs text-slate-400">Follow these guidelines for clean imports</p>
-            </div>
-          </div>
-          <ul className="text-sm text-slate-600 space-y-2.5 list-none">
-            <li className="flex items-start gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mt-2 shrink-0" />
-              <span>Required columns: <strong className="text-slate-900">Product SKU</strong>, <strong className="text-slate-900">Customer Name</strong>, and <strong className="text-slate-900">Phone Number</strong>.</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mt-2 shrink-0" />
-              <span>Phone numbers can be local (06...) or international (+212...).</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mt-2 shrink-0" />
-              <span>Maximum <strong className="text-slate-900">1,000 leads</strong> per CSV upload.</span>
-            </li>
-          </ul>
-        </Card>
-
-      </div>
 
     </div>
   );

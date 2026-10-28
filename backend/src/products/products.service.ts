@@ -250,6 +250,7 @@ export class ProductsService {
       ...o.product,
       offerId: o.id,
       offerStatus: o.approvedStatus,
+      approvedStatus: o.approvedStatus,
       sellerMinimumPrice: o.minimumPrice,
     }));
   }
